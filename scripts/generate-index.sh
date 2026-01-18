@@ -1,3 +1,196 @@
+#!/bin/bash
+
+# Script to dynamically generate index.html based on repository contents
+# This script scans the repository for markdown files and generates a beautiful index.html
+
+set -e
+
+# Get the script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$REPO_ROOT"
+
+# Function to convert directory name to title case
+to_title_case() {
+    echo "$1" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1'
+}
+
+# Function to extract title from markdown file
+get_md_title() {
+    local file="$1"
+    # Try to get title from first h1 heading
+    local title=$(grep -m1 "^# " "$file" 2>/dev/null | sed 's/^# //')
+    if [ -z "$title" ]; then
+        # Fallback to filename
+        title=$(basename "$file" .md | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+    fi
+    echo "$title"
+}
+
+# Function to get file modification date
+get_file_date() {
+    local file="$1"
+    git log -1 --format="%ci" -- "$file" 2>/dev/null | cut -d' ' -f1 || date +%Y-%m-%d
+}
+
+# Collect all markdown files organized by directory
+declare -A categories
+declare -a all_files
+declare -a file_dates
+
+# Find all markdown files
+while IFS= read -r -d '' file; do
+    # Skip hidden files and directories
+    [[ "$file" =~ ^\./\. ]] && continue
+    [[ "$file" =~ ^\./_ ]] && continue
+    
+    # Get relative path without ./
+    rel_path="${file#./}"
+    
+    # Get directory
+    dir=$(dirname "$rel_path")
+    
+    # Get file info
+    title=$(get_md_title "$file")
+    date=$(get_file_date "$file")
+    
+    # Store file info
+    all_files+=("$rel_path|$title|$date|$dir")
+    
+    # Add to category
+    if [ "$dir" = "." ]; then
+        category="root"
+    else
+        category="$dir"
+    fi
+    
+    if [ -z "${categories[$category]}" ]; then
+        categories[$category]="$rel_path|$title|$date"
+    else
+        categories[$category]="${categories[$category]};;;$rel_path|$title|$date"
+    fi
+done < <(find . -name "*.md" -not -path "./.git/*" -not -path "./_*" -print0 | sort -z)
+
+# Generate HTML content for categories
+generate_category_html() {
+    local category="$1"
+    local files="$2"
+    local category_title
+    
+    if [ "$category" = "root" ]; then
+        category_title="Getting Started"
+        icon="🚀"
+    else
+        category_title=$(to_title_case "$category")
+        case "$category" in
+            *design*) icon="🎨" ;;
+            *architecture*) icon="🏗️" ;;
+            *scalability*) icon="📈" ;;
+            *security*) icon="🔒" ;;
+            *database*) icon="💾" ;;
+            *pattern*) icon="🧩" ;;
+            *) icon="📂" ;;
+        esac
+    fi
+    
+    echo "                <div class=\"category-card\">"
+    echo "                    <div class=\"category-header\">"
+    echo "                        <span class=\"category-icon\">$icon</span>"
+    echo "                        <h3>$category_title</h3>"
+    echo "                    </div>"
+    echo "                    <ul class=\"file-list\">"
+    
+    # Parse files using ;;; as delimiter
+    while IFS='|' read -r path title date; do
+        [ -z "$path" ] && continue
+        # Convert .md to .html for Jekyll output
+        html_path="${path%.md}.html"
+        echo "                        <li>"
+        echo "                            <a href=\"$html_path\">"
+        echo "                                <span class=\"file-icon\">📄</span>"
+        echo "                                <span class=\"file-title\">$title</span>"
+        echo "                            </a>"
+        echo "                        </li>"
+    done <<< "$(echo "$files" | sed 's/;;;/\n/g')"
+    
+    echo "                    </ul>"
+    echo "                </div>"
+}
+
+# Generate recent files (sorted by date, limit to 5)
+generate_recent_html() {
+    echo "            <section class=\"recent-section\">"
+    echo "                <h2><span class=\"section-icon\">🕐</span> Recent Updates</h2>"
+    echo "                <div class=\"recent-grid\">"
+    
+    # Sort files by date and take top 5
+    local sorted_files=$(for f in "${all_files[@]}"; do echo "$f"; done | sort -t'|' -k3 -r | head -5)
+    
+    while IFS='|' read -r path title date dir; do
+        [ -z "$path" ] && continue
+        html_path="${path%.md}.html"
+        local category_title
+        if [ "$dir" = "." ]; then
+            category_title="Getting Started"
+        else
+            category_title=$(to_title_case "$dir")
+        fi
+        
+        echo "                    <a href=\"$html_path\" class=\"recent-card\">"
+        echo "                        <div class=\"recent-meta\">"
+        echo "                            <span class=\"recent-category\">$category_title</span>"
+        echo "                            <span class=\"recent-date\">$date</span>"
+        echo "                        </div>"
+        echo "                        <h4>$title</h4>"
+        echo "                    </a>"
+    done <<< "$sorted_files"
+    
+    echo "                </div>"
+    echo "            </section>"
+}
+
+# Generate recommended content
+generate_recommended_html() {
+    echo "            <section class=\"recommended-section\">"
+    echo "                <h2><span class=\"section-icon\">⭐</span> Recommended Content</h2>"
+    echo "                <div class=\"recommended-grid\">"
+    
+    # Prioritize certain topics as recommended
+    local recommended_patterns=("microservices" "caching" "horizontal-scaling" "load-balancing")
+    
+    for pattern in "${recommended_patterns[@]}"; do
+        for file_info in "${all_files[@]}"; do
+            IFS='|' read -r path title date dir <<< "$file_info"
+            if [[ "$path" == *"$pattern"* ]]; then
+                html_path="${path%.md}.html"
+                local category_title
+                if [ "$dir" = "." ]; then
+                    category_title="Getting Started"
+                else
+                    category_title=$(to_title_case "$dir")
+                fi
+                
+                echo "                    <a href=\"$html_path\" class=\"recommended-card\">"
+                echo "                        <div class=\"recommended-badge\">Recommended</div>"
+                echo "                        <h4>$title</h4>"
+                echo "                        <span class=\"recommended-category\">$category_title</span>"
+                echo "                    </a>"
+                break
+            fi
+        done
+    done
+    
+    echo "                </div>"
+    echo "            </section>"
+}
+
+# Count total files and categories
+total_files=${#all_files[@]}
+total_categories=${#categories[@]}
+
+# Generate the index.html file
+cat > index.html << 'HTMLHEAD'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -430,164 +623,56 @@
             <p>Comprehensive guide to architecture patterns, design patterns, and scalability best practices for building robust systems</p>
             <div class="hero-stats">
                 <div class="stat">
-                    <span class="stat-number">7</span>
-                    <span class="stat-label">Articles</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-number">4</span>
-                    <span class="stat-label">Categories</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-number">∞</span>
-                    <span class="stat-label">Knowledge</span>
-                </div>
+HTMLHEAD
+
+echo "                    <span class=\"stat-number\">$total_files</span>" >> index.html
+echo "                    <span class=\"stat-label\">Articles</span>" >> index.html
+echo "                </div>" >> index.html
+echo "                <div class=\"stat\">" >> index.html
+echo "                    <span class=\"stat-number\">$total_categories</span>" >> index.html
+echo "                    <span class=\"stat-label\">Categories</span>" >> index.html
+echo "                </div>" >> index.html
+echo "                <div class=\"stat\">" >> index.html
+echo "                    <span class=\"stat-number\">∞</span>" >> index.html
+echo "                    <span class=\"stat-label\">Knowledge</span>" >> index.html
+echo "                </div>" >> index.html
+
+cat >> index.html << 'HTMLMID'
             </div>
         </div>
     </header>
 
     <main class="container">
-            <section class="recent-section">
-                <h2><span class="section-icon">🕐</span> Recent Updates</h2>
-                <div class="recent-grid">
-                    <a href="scalability/vertical-scaling.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">Scalability</span>
-                            <span class="recent-date">2026-01-18</span>
-                        </div>
-                        <h4>Vertical Scaling</h4>
-                    </a>
-                    <a href="scalability/horizontal-scaling.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">Scalability</span>
-                            <span class="recent-date">2026-01-18</span>
-                        </div>
-                        <h4>Horizontal Scaling</h4>
-                    </a>
-                    <a href="design-patterns/load-balancing.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">Design Patterns</span>
-                            <span class="recent-date">2026-01-18</span>
-                        </div>
-                        <h4>Load Balancing Pattern</h4>
-                    </a>
-                    <a href="design-patterns/caching.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">Design Patterns</span>
-                            <span class="recent-date">2026-01-18</span>
-                        </div>
-                        <h4>Caching Design Pattern</h4>
-                    </a>
-                    <a href="architecture-patterns/microservices.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">Architecture Patterns</span>
-                            <span class="recent-date">2026-01-18</span>
-                        </div>
-                        <h4>Microservices Architecture</h4>
-                    </a>
-                </div>
-            </section>
-            <section class="recommended-section">
-                <h2><span class="section-icon">⭐</span> Recommended Content</h2>
-                <div class="recommended-grid">
-                    <a href="architecture-patterns/microservices.html" class="recommended-card">
-                        <div class="recommended-badge">Recommended</div>
-                        <h4>Microservices Architecture</h4>
-                        <span class="recommended-category">Architecture Patterns</span>
-                    </a>
-                    <a href="design-patterns/caching.html" class="recommended-card">
-                        <div class="recommended-badge">Recommended</div>
-                        <h4>Caching Design Pattern</h4>
-                        <span class="recommended-category">Design Patterns</span>
-                    </a>
-                    <a href="scalability/horizontal-scaling.html" class="recommended-card">
-                        <div class="recommended-badge">Recommended</div>
-                        <h4>Horizontal Scaling</h4>
-                        <span class="recommended-category">Scalability</span>
-                    </a>
-                    <a href="design-patterns/load-balancing.html" class="recommended-card">
-                        <div class="recommended-badge">Recommended</div>
-                        <h4>Load Balancing Pattern</h4>
-                        <span class="recommended-category">Design Patterns</span>
-                    </a>
-                </div>
-            </section>
-            <section id="all-content" class="all-content-section">
-                <h2><span class="section-icon">📂</span> All Content</h2>
-                <div class="categories-grid">
-                <div class="category-card">
-                    <div class="category-header">
-                        <span class="category-icon">🚀</span>
-                        <h3>Getting Started</h3>
-                    </div>
-                    <ul class="file-list">
-                        <li>
-                            <a href="README.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">systemdesign-deepdive</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-                <div class="category-card">
-                    <div class="category-header">
-                        <span class="category-icon">🏗️</span>
-                        <h3>Architecture Patterns</h3>
-                    </div>
-                    <ul class="file-list">
-                        <li>
-                            <a href="architecture-patterns/event-driven.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">Event-Driven Architecture</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="architecture-patterns/microservices.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">Microservices Architecture</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-                <div class="category-card">
-                    <div class="category-header">
-                        <span class="category-icon">🎨</span>
-                        <h3>Design Patterns</h3>
-                    </div>
-                    <ul class="file-list">
-                        <li>
-                            <a href="design-patterns/caching.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">Caching Design Pattern</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="design-patterns/load-balancing.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">Load Balancing Pattern</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-                <div class="category-card">
-                    <div class="category-header">
-                        <span class="category-icon">📈</span>
-                        <h3>Scalability</h3>
-                    </div>
-                    <ul class="file-list">
-                        <li>
-                            <a href="scalability/horizontal-scaling.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">Horizontal Scaling</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="scalability/vertical-scaling.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">Vertical Scaling</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
+HTMLMID
+
+# Generate recent section
+generate_recent_html >> index.html
+
+# Generate recommended section
+generate_recommended_html >> index.html
+
+# Generate all content section
+echo "            <section id=\"all-content\" class=\"all-content-section\">" >> index.html
+echo "                <h2><span class=\"section-icon\">📂</span> All Content</h2>" >> index.html
+echo "                <div class=\"categories-grid\">" >> index.html
+
+# Output categories in a specific order
+ordered_categories=("root" "architecture-patterns" "design-patterns" "scalability")
+
+for cat in "${ordered_categories[@]}"; do
+    if [ -n "${categories[$cat]}" ]; then
+        generate_category_html "$cat" "${categories[$cat]}" >> index.html
+    fi
+done
+
+# Output any remaining categories not in the ordered list
+for cat in "${!categories[@]}"; do
+    if [[ ! " ${ordered_categories[*]} " =~ " ${cat} " ]]; then
+        generate_category_html "$cat" "${categories[$cat]}" >> index.html
+    fi
+done
+
+cat >> index.html << 'HTMLFOOT'
                 </div>
             </section>
     </main>
@@ -606,3 +691,7 @@
     </footer>
 </body>
 </html>
+HTMLFOOT
+
+echo "✅ index.html generated successfully!"
+echo "📊 Found $total_files articles in $total_categories categories"

@@ -21,234 +21,357 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install Jekyll and dependencies
+        run: |
+          gem install jekyll bundler
+          if [ -f Gemfile ]; then
+            bundle install
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Build site
+      - name: Generate dynamic index.html
         run: |
-          # Create a docs directory for the site
-          mkdir -p docs
+          chmod +x ./scripts/generate-index.sh
+          ./scripts/generate-index.sh
+
+      - name: Create Jekyll config if not exists
+        run: |
+          if [ ! -f _config.yml ]; then
+            cat > _config.yml << 'EOF'
+          title: System Design Deep Dive
+          description: Architecture Patterns & Best Practices for System Design
+          baseurl: ""
+          url: "https://anilinfo2015.github.io/systemdesign-deepdive"
           
-          # Copy all markdown files to docs
-          find . -name "*.md" -not -path "./.git/*" -not -path "./docs/*" | while read file; do
-            dir=$(dirname "$file")
-            mkdir -p "docs/$dir"
-            cp "$file" "docs/$file"
-          done
+          # Build settings
+          markdown: kramdown
+          highlighter: rouge
           
-          # Generate index.html
-          cat > docs/index.html << 'EOF'
+          kramdown:
+            input: GFM
+            syntax_highlighter: rouge
+            syntax_highlighter_opts:
+              block:
+                line_numbers: true
+          
+          # Exclude from processing
+          exclude:
+            - .git
+            - .github
+            - node_modules
+            - scripts
+            - "*.sh"
+            - Gemfile
+            - Gemfile.lock
+            - LICENSE
+          
+          # Include markdown files
+          include:
+            - _pages
+          
+          # Default layout for markdown files
+          defaults:
+            - scope:
+                path: ""
+                type: "pages"
+              values:
+                layout: "default"
+            - scope:
+                path: "*.md"
+              values:
+                layout: "default"
+          EOF
+          fi
+
+      - name: Create Jekyll layouts
+        run: |
+          mkdir -p _layouts
+          
+          # Create default layout for markdown pages
+          cat > _layouts/default.html << 'LAYOUT'
           <!DOCTYPE html>
           <html lang="en">
           <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>System Design Deep Dive</title>
-              <style>
-                  * {
-                      margin: 0;
-                      padding: 0;
-                      box-sizing: border-box;
-                  }
-                  
-                  body {
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                      line-height: 1.6;
-                      color: #333;
-                      background: #f5f5f5;
-                  }
-                  
-                  .container {
-                      max-width: 1200px;
-                      margin: 0 auto;
-                      padding: 20px;
-                  }
-                  
-                  header {
-                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                      color: white;
-                      padding: 60px 20px;
-                      text-align: center;
-                      margin-bottom: 40px;
-                      border-radius: 10px;
-                      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-                  }
-                  
-                  h1 {
-                      font-size: 3em;
-                      margin-bottom: 10px;
-                      font-weight: 700;
-                  }
-                  
-                  .subtitle {
-                      font-size: 1.2em;
-                      opacity: 0.9;
-                  }
-                  
-                  .section {
-                      background: white;
-                      margin-bottom: 30px;
-                      padding: 30px;
-                      border-radius: 10px;
-                      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-                  }
-                  
-                  .section h2 {
-                      color: #667eea;
-                      margin-bottom: 20px;
-                      font-size: 1.8em;
-                      border-bottom: 3px solid #667eea;
-                      padding-bottom: 10px;
-                  }
-                  
-                  .file-list {
-                      list-style: none;
-                  }
-                  
-                  .file-list li {
-                      margin-bottom: 12px;
-                  }
-                  
-                  .file-list a {
-                      display: flex;
-                      align-items: center;
-                      padding: 15px 20px;
-                      background: #f8f9fa;
-                      border-radius: 8px;
-                      text-decoration: none;
-                      color: #333;
-                      transition: all 0.3s ease;
-                      border-left: 4px solid #667eea;
-                  }
-                  
-                  .file-list a:hover {
-                      background: #e9ecef;
-                      transform: translateX(5px);
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                  }
-                  
-                  .file-icon {
-                      margin-right: 12px;
-                      font-size: 1.2em;
-                  }
-                  
-                  footer {
-                      text-align: center;
-                      padding: 40px 20px;
-                      color: #666;
-                      border-top: 1px solid #ddd;
-                      margin-top: 40px;
-                  }
-                  
-                  .github-link {
-                      display: inline-block;
-                      margin-top: 10px;
-                      color: #667eea;
-                      text-decoration: none;
-                      font-weight: 500;
-                  }
-                  
-                  .github-link:hover {
-                      text-decoration: underline;
-                  }
-              </style>
+              <title>{{ page.title | default: site.title }}</title>
+              <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
           </head>
           <body>
-              <div class="container">
-                  <header>
-                      <h1>📚 System Design Deep Dive</h1>
-                      <p class="subtitle">Architecture Patterns & Best Practices</p>
-                  </header>
-                  
-                  <div id="content"></div>
-                  
-                  <footer>
-                      <p>System Design Deep Dive Documentation</p>
-                      <a href="https://github.com/Anilinfo2015/systemdesign-deepdive" class="github-link">View on GitHub</a>
-                  </footer>
-              </div>
+              <nav class="top-nav">
+                  <div class="nav-container">
+                      <a href="{{ '/' | relative_url }}" class="nav-brand">📚 System Design Deep Dive</a>
+                      <div class="nav-links">
+                          <a href="{{ '/' | relative_url }}">Home</a>
+                          <a href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank">GitHub</a>
+                      </div>
+                  </div>
+              </nav>
               
-              <script>
-                  async function loadMarkdownFiles() {
-                      const contentDiv = document.getElementById('content');
-                      
-                      // Define the markdown files by category
-                      const categories = {
-                          'Design Patterns': [
-                              { path: 'design-patterns/caching.md', name: 'Caching Pattern' },
-                              { path: 'design-patterns/load-balancing.md', name: 'Load Balancing' }
-                          ],
-                          'Architecture Patterns': [
-                              { path: 'architecture-patterns/microservices.md', name: 'Microservices Architecture' },
-                              { path: 'architecture-patterns/event-driven.md', name: 'Event-Driven Architecture' }
-                          ],
-                          'Scalability': [
-                              { path: 'scalability/horizontal-scaling.md', name: 'Horizontal Scaling' },
-                              { path: 'scalability/vertical-scaling.md', name: 'Vertical Scaling' }
-                          ]
-                      };
-                      
-                      // Add README if exists
-                      try {
-                          const readmeResponse = await fetch('README.md');
-                          if (readmeResponse.ok) {
-                              categories['Getting Started'] = [
-                                  { path: 'README.md', name: 'README' }
-                              ];
-                          }
-                      } catch (e) {
-                          // README doesn't exist, skip
-                      }
-                      
-                      // Generate sections for each category
-                      for (const [category, files] of Object.entries(categories)) {
-                          const section = document.createElement('div');
-                          section.className = 'section';
-                          
-                          const heading = document.createElement('h2');
-                          heading.textContent = category;
-                          section.appendChild(heading);
-                          
-                          const ul = document.createElement('ul');
-                          ul.className = 'file-list';
-                          
-                          for (const file of files) {
-                              const li = document.createElement('li');
-                              const a = document.createElement('a');
-                              a.href = file.path;
-                              
-                              const icon = document.createElement('span');
-                              icon.className = 'file-icon';
-                              icon.textContent = '📄';
-                              
-                              const text = document.createTextNode(file.name);
-                              
-                              a.appendChild(icon);
-                              a.appendChild(text);
-                              li.appendChild(a);
-                              ul.appendChild(li);
-                          }
-                          
-                          section.appendChild(ul);
-                          contentDiv.appendChild(section);
-                      }
-                  }
-                  
-                  // Load files when page loads
-                  loadMarkdownFiles();
-              </script>
+              <main class="content-wrapper">
+                  <article class="markdown-content">
+                      {{ content }}
+                  </article>
+              </main>
+              
+              <footer class="site-footer">
+                  <p>System Design Deep Dive Documentation</p>
+                  <a href="https://github.com/Anilinfo2015/systemdesign-deepdive">View on GitHub</a>
+              </footer>
           </body>
           </html>
-          EOF
+          LAYOUT
+
+      - name: Create CSS styles
+        run: |
+          mkdir -p assets/css
           
-          echo "Site built successfully in docs/"
-          ls -la docs/
+          cat > assets/css/style.css << 'CSS'
+          * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+          }
+          
+          body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+              line-height: 1.7;
+              color: #1a1a2e;
+              background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+              min-height: 100vh;
+          }
+          
+          .top-nav {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              padding: 15px 0;
+              position: sticky;
+              top: 0;
+              z-index: 1000;
+              box-shadow: 0 2px 20px rgba(102, 126, 234, 0.3);
+          }
+          
+          .nav-container {
+              max-width: 1200px;
+              margin: 0 auto;
+              padding: 0 20px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+          }
+          
+          .nav-brand {
+              color: white;
+              text-decoration: none;
+              font-size: 1.4em;
+              font-weight: 700;
+          }
+          
+          .nav-links a {
+              color: white;
+              text-decoration: none;
+              margin-left: 25px;
+              font-weight: 500;
+              transition: opacity 0.3s;
+          }
+          
+          .nav-links a:hover {
+              opacity: 0.8;
+          }
+          
+          .content-wrapper {
+              max-width: 900px;
+              margin: 40px auto;
+              padding: 0 20px;
+          }
+          
+          .markdown-content {
+              background: white;
+              padding: 50px;
+              border-radius: 16px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+          }
+          
+          .markdown-content h1 {
+              color: #667eea;
+              font-size: 2.5em;
+              margin-bottom: 20px;
+              padding-bottom: 15px;
+              border-bottom: 3px solid #667eea;
+          }
+          
+          .markdown-content h2 {
+              color: #764ba2;
+              font-size: 1.8em;
+              margin-top: 35px;
+              margin-bottom: 15px;
+          }
+          
+          .markdown-content h3 {
+              color: #333;
+              font-size: 1.4em;
+              margin-top: 25px;
+              margin-bottom: 12px;
+          }
+          
+          .markdown-content p {
+              margin-bottom: 16px;
+              color: #444;
+          }
+          
+          .markdown-content ul, .markdown-content ol {
+              margin-left: 25px;
+              margin-bottom: 16px;
+          }
+          
+          .markdown-content li {
+              margin-bottom: 8px;
+              color: #444;
+          }
+          
+          .markdown-content code {
+              background: #f4f4f8;
+              padding: 3px 8px;
+              border-radius: 4px;
+              font-family: 'Monaco', 'Consolas', monospace;
+              font-size: 0.9em;
+              color: #e83e8c;
+          }
+          
+          .markdown-content pre {
+              background: #1a1a2e;
+              padding: 20px;
+              border-radius: 10px;
+              overflow-x: auto;
+              margin: 20px 0;
+          }
+          
+          .markdown-content pre code {
+              background: transparent;
+              color: #a8dadc;
+              padding: 0;
+          }
+          
+          .markdown-content a {
+              color: #667eea;
+              text-decoration: none;
+              border-bottom: 1px solid transparent;
+              transition: border-color 0.3s;
+          }
+          
+          .markdown-content a:hover {
+              border-bottom-color: #667eea;
+          }
+          
+          .markdown-content blockquote {
+              border-left: 4px solid #667eea;
+              padding-left: 20px;
+              margin: 20px 0;
+              color: #666;
+              font-style: italic;
+          }
+          
+          .markdown-content table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 20px 0;
+          }
+          
+          .markdown-content th, .markdown-content td {
+              border: 1px solid #ddd;
+              padding: 12px;
+              text-align: left;
+          }
+          
+          .markdown-content th {
+              background: #667eea;
+              color: white;
+          }
+          
+          .markdown-content tr:nth-child(even) {
+              background: #f8f9fa;
+          }
+          
+          .site-footer {
+              text-align: center;
+              padding: 40px 20px;
+              color: #666;
+              border-top: 1px solid #ddd;
+              margin-top: 60px;
+              background: white;
+          }
+          
+          .site-footer a {
+              color: #667eea;
+              text-decoration: none;
+              font-weight: 500;
+              margin-top: 10px;
+              display: inline-block;
+          }
+          
+          .site-footer a:hover {
+              text-decoration: underline;
+          }
+          
+          /* Responsive */
+          @media (max-width: 768px) {
+              .markdown-content {
+                  padding: 25px;
+              }
+              
+              .markdown-content h1 {
+                  font-size: 1.8em;
+              }
+              
+              .nav-container {
+                  flex-direction: column;
+                  gap: 10px;
+              }
+              
+              .nav-links a {
+                  margin-left: 15px;
+              }
+          }
+          CSS
+
+      - name: Add front matter to markdown files
+        run: |
+          # Add Jekyll front matter to markdown files if not present
+          find . -name "*.md" -not -path "./.git/*" -not -path "./_*" | while read file; do
+            if ! head -1 "$file" | grep -q "^---"; then
+              # Extract title from first heading or filename
+              title=$(grep -m1 "^# " "$file" | sed 's/^# //' || basename "$file" .md)
+              tmpfile=$(mktemp)
+              echo "---" > "$tmpfile"
+              echo "layout: default" >> "$tmpfile"
+              echo "title: \"$title\"" >> "$tmpfile"
+              echo "---" >> "$tmpfile"
+              echo "" >> "$tmpfile"
+              cat "$file" >> "$tmpfile"
+              mv "$tmpfile" "$file"
+            fi
+          done
+
+      - name: Build with Jekyll
+        run: |
+          jekyll build --destination _site
+        env:
+          JEKYLL_ENV: production
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs'
+          path: './_site'
 
   deploy:
     environment:
