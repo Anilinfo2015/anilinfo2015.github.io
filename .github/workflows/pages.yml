@@ -53,18 +53,18 @@ jobs:
           description: Architecture Patterns & Best Practices for System Design
           baseurl: ""
           url: "https://anilinfo2015.github.io/systemdesign-deepdive"
-          
+
           # Build settings
           markdown: kramdown
           highlighter: rouge
-          
+
           kramdown:
             input: GFM
             syntax_highlighter: rouge
             syntax_highlighter_opts:
               block:
                 line_numbers: true
-          
+
           # Exclude from processing
           exclude:
             - .git
@@ -75,7 +75,7 @@ jobs:
             - Gemfile
             - Gemfile.lock
             - LICENSE
-          
+
           # Include markdown files
           include:
             - _pages

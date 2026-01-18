@@ -19,19 +19,45 @@ to_title_case() {
 # Function to extract title from markdown file
 get_md_title() {
     local file="$1"
-    # Try to get title from first h1 heading
-    local title=$(grep -m1 "^# " "$file" 2>/dev/null | sed 's/^# //')
+    local title=""
+    
+    # Validate file exists and is readable
+    if [ ! -r "$file" ]; then
+        title=$(basename "$file" .md | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+        echo "$title"
+        return
+    fi
+    
+    # Try to get title from first h1 heading (supports both # and === style)
+    title=$(grep -m1 "^# " "$file" 2>/dev/null | sed 's/^# //' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+    
+    # If no title found, fallback to filename converted to title case
     if [ -z "$title" ]; then
-        # Fallback to filename
         title=$(basename "$file" .md | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
     fi
+    
+    # Ensure title is not empty
+    if [ -z "$title" ]; then
+        title="Untitled"
+    fi
+    
     echo "$title"
 }
 
 # Function to get file modification date
 get_file_date() {
     local file="$1"
-    git log -1 --format="%ci" -- "$file" 2>/dev/null | cut -d' ' -f1 || date +%Y-%m-%d
+    local date=""
+    
+    # Try to get date from git history
+    date=$(git log -1 --format="%ci" -- "$file" 2>/dev/null | cut -d' ' -f1)
+    
+    # Fallback to current date if git history not available
+    if [ -z "$date" ]; then
+        date=$(date +%Y-%m-%d)
+    fi
+    
+    echo "$date"
 }
 
 # Collect all markdown files organized by directory
