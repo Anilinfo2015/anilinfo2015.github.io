@@ -1,3 +1,12 @@
+---
+layout: default
+title: "The Blueprint: From Requirements to Architecture"
+description: "Learn how to architect a YouTube-scale system from first principles, starting with requirements and moving through high-level design"
+category: "System Design"
+tags: ["youtube", "system-design", "architecture", "video-streaming", "scalability"]
+date: 2026-01-19
+---
+
 # The Blueprint: From Requirements to Architecture
 
 When you hit play on a YouTube video, thousands of engineers' work converges in your browser in about 2 seconds. From a creator uploading a 4K video on unreliable WiFi to you watching it across the globe with adaptive quality—the system behind YouTube is one of the most complex distributed systems ever built.

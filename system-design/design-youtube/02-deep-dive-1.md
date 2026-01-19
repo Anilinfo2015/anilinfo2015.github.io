@@ -1,3 +1,12 @@
+---
+layout: default
+title: "Deep Dive 1: Real-Time Analytics at 1 Million QPS"
+description: "Solve the core problem of recording 1 million view events per second, aggregating them, and displaying accurate counters to billions of users"
+category: "System Design"
+tags: ["youtube", "analytics", "real-time", "performance", "scalability"]
+date: 2026-01-19
+---
+
 # Deep Dive 1: Real-Time Analytics at 1 Million QPS
 
 The moment a user hits play on a YouTube video, the counter increments. Not eventually, not in 5 minutes—instantly. You refresh the page and see 1,000 more views than a moment ago. This feels like magic. It's actually one of the most technically intricate problems at YouTube's scale, and every design choice carries a $10M+ cost penalty if wrong.

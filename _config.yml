@@ -42,6 +42,12 @@ defaults:
     values:
       layout: "default"
       category: "Scalability"
+  - scope:
+      path: "system-design"
+      type: "pages"
+    values:
+      layout: "default"
+      category: "System Design"
 
 # Exclude files
 exclude:

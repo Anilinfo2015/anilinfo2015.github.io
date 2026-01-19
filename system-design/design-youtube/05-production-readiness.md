@@ -1,3 +1,12 @@
+---
+layout: default
+title: "Production Readiness: Operating YouTube at Scale"
+description: "Learn about SLOs, multi-region failover, incident response, security, and cost optimization for operating YouTube at scale"
+category: "System Design"
+tags: ["youtube", "operations", "production", "reliability", "scalability"]
+date: 2026-01-19
+---
+
 # Production Readiness: Operating YouTube at Scale
 
 You've built a beautiful system. Real-time analytics at 1M QPS. Efficient transcoding saving billions in bandwidth. Metadata consistency across PostgreSQL, Elasticsearch, Redis. The architecture is sound.

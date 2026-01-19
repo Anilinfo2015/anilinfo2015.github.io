@@ -1,3 +1,12 @@
+---
+layout: default
+title: "Deep Dive 3: Metadata Consistency — Keeping Search in Sync"
+description: "Master data consistency across multiple databases: PostgreSQL, Elasticsearch, and Redis at YouTube scale"
+category: "System Design"
+tags: ["youtube", "consistency", "database", "search", "distributed-systems"]
+date: 2026-01-19
+---
+
 # Deep Dive 3: Metadata Consistency — Keeping Search in Sync
 
 A creator updates their video title from "Tutorial" to "Advanced JavaScript Tutorial for Beginners (2024)". They hit save. One millisecond later, the API responds: "Title updated." But when they search for "Advanced JavaScript Tutorial", nothing appears. A friend searching finds the old title. The video info page shows the new title.

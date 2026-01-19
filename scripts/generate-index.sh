@@ -190,6 +190,7 @@ generate_category_html() {
             *security*) icon="🔒" ;;
             *database*) icon="💾" ;;
             *pattern*) icon="🧩" ;;
+            *system-design*) icon="🖥️" ;;
             *) icon="📂" ;;
         esac
     fi
@@ -458,7 +459,7 @@ echo "                <h2><span class=\"section-icon\">📂</span> All Content</
 echo "                <div class=\"categories-grid\">" >> index.html
 
 # Output categories in a specific order
-ordered_categories=("root" "architecture-patterns" "design-patterns" "scalability")
+ordered_categories=("root" "architecture-patterns" "design-patterns" "scalability" "system-design")
 
 for cat in "${ordered_categories[@]}"; do
     if [ -n "${categories[$cat]}" ]; then
