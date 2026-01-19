@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{{ page.excerpt | default: site.description | strip_html | truncate: 160 }}">
+    <title>{{ page.title | default: site.title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+    <script defer src="{{ '/assets/js/site.js' | relative_url }}"></script>
+</head>
+<body>
+    <div class="reading-progress" id="reading-progress"></div>
+
+    <nav class="top-nav">
+        <div class="nav-container">
+            <a href="{{ '/' | relative_url }}" class="nav-brand">📚 System Design Deep Dive</a>
+            <div class="nav-links">
+                <a href="{{ '/' | relative_url }}">Home</a>
+                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="content-wrapper">
+        <article class="markdown-content">
+            {{ content }}
+        </article>
+    </main>
+
+    <footer class="site-footer">
+        <p>System Design Deep Dive Documentation</p>
+        <a href="https://github.com/Anilinfo2015/systemdesign-deepdive">View on GitHub</a>
+    </footer>
+</body>
+</html>
