@@ -3,7 +3,8 @@ title: "System Design Deep Dive"
 description: "Comprehensive guide to architecture patterns, design patterns, and scalability best practices. Learn microservices, event-driven architecture, caching strategies, load balancing, horizontal and vertical scaling."
 author: "Anilinfo2015"
 email: "anilinfo2015@example.com"
-url: "https://anilinfo2015.github.io/systemdesign-deepdive"
+url: "https://anilinfo2015.github.io"
+baseurl: ""
 
 # SEO settings
 lang: en_US

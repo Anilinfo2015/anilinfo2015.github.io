@@ -214,6 +214,8 @@ section {
 
 .featured-badge {
     display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-family: 'Inter', system-ui, sans-serif;
     background: rgba(79, 70, 229, 0.1);
     color: var(--brand);
@@ -339,6 +341,7 @@ section {
     position: relative;
     z-index: 1;
     flex-grow: 1;
+    padding-top: 32px;
 }
 
 .recommended-card h4 {

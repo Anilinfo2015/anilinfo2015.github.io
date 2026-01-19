@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 
 # Sitemaps
-Sitemap: https://anilinfo2015.github.io/systemdesign-deepdive/sitemap.xml
+Sitemap: https://anilinfo2015.github.io/sitemap.xml
 
 # Crawl-delay for respectful crawling
 Crawl-delay: 1
