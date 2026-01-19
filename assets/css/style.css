@@ -769,30 +769,124 @@ body {
 }
 
 /* ===== Responsive ===== */
+/* Large screens */
+@media (min-width: 1400px) {
+    .content-wrapper {
+        max-width: 75%;
+    }
+    
+    .nav-container {
+        max-width: 1300px;
+    }
+}
+
+/* Tablet landscape */
+@media (max-width: 1024px) {
+    .content-wrapper {
+        max-width: 90%;
+        padding: 0 20px;
+    }
+    
+    .markdown-content {
+        padding: 40px 32px 48px;
+    }
+}
+
+/* Tablet portrait */
+@media (max-width: 900px) {
+    .content-wrapper {
+        margin: 40px auto 80px;
+    }
+    
+    .markdown-content {
+        padding: 32px 24px 40px;
+    }
+    
+    .markdown-content h1 {
+        font-size: 2.2rem;
+    }
+    
+    .markdown-content h2 {
+        font-size: 1.8rem;
+    }
+}
+
+/* Mobile */
 @media (max-width: 768px) {
     body {
         font-size: 17px;
     }
 
     .content-wrapper {
+        max-width: 95%;
         margin: 32px auto 60px;
+        padding: 0 16px;
     }
 
     .markdown-content {
-        padding: 28px 24px;
+        padding: 24px 20px 32px;
         font-size: 17px;
+        border-radius: 16px;
     }
 
     .markdown-content h1 {
         font-size: 1.9rem;
+        line-height: 1.2;
+    }
+    
+    .markdown-content h2 {
+        font-size: 1.6rem;
+    }
+    
+    .markdown-content h3 {
+        font-size: 1.4rem;
     }
 
     .nav-container {
         flex-direction: column;
         gap: 10px;
+        padding: 0 16px;
     }
 
     .nav-links a {
         margin-left: 12px;
+    }
+    
+    /* Code blocks mobile optimization */
+    .markdown-content pre,
+    .article-body pre {
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        overflow-x: auto;
+    }
+    
+    .markdown-content code,
+    .article-body code {
+        font-size: 0.85rem;
+        padding: 1px 4px;
+    }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+    .content-wrapper {
+        padding: 0 12px;
+    }
+    
+    .markdown-content {
+        padding: 20px 16px 28px;
+    }
+    
+    .markdown-content h1 {
+        font-size: 1.7rem;
+    }
+    
+    .breadcrumb {
+        margin-bottom: 16px;
+    }
+    
+    .breadcrumb a {
+        font-size: 0.9rem;
     }
 }
