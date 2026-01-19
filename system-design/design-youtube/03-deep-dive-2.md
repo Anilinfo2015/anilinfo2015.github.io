@@ -1,12 +1,3 @@
----
-layout: default
-title: "Deep Dive 2: Transcoding Economics — Why AV1 Costs Less"
-description: "Learn the hidden economics of video transcoding and when the slowest codec (AV1) becomes the cheapest option"
-category: "System Design"
-tags: ["youtube", "transcoding", "video", "economics", "optimization"]
-date: 2026-01-19
----
-
 # Deep Dive 2: Transcoding Economics — Why AV1 Costs Less
 
 A creator uploads a 4K video to YouTube. The original file is 30 GB, recorded from a RED camera. YouTube's system receives this file and must convert it into dozens of versions: 480p for mobile on slow networks, 1080p for desktop, 2160p for big screens, 4320p for future TVs. Each quality exists in three codecs: H.264 (universal), VP9 (modern browsers), and AV1 (emerging, extremely efficient).
