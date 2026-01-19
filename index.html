@@ -3,94 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- Primary Meta Tags -->
-    <title>System Design Deep Dive - Comprehensive Architecture Patterns Guide</title>
-    <meta name="title" content="System Design Deep Dive - Comprehensive Architecture Patterns Guide">
-    <meta name="description" content="Master system design with comprehensive guides on architecture patterns, design patterns, and scalability. Learn microservices, caching, load balancing, and more.">
-    <meta name="keywords" content="system design, architecture patterns, microservices, scalability, design patterns, software architecture, distributed systems, load balancing, caching, horizontal scaling">
-    <meta name="author" content="Anilinfo2015">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://anilinfo2015.github.io/">
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://anilinfo2015.github.io/">
-    <meta property="og:title" content="System Design Deep Dive - Comprehensive Architecture Patterns Guide">
-    <meta property="og:description" content="Master system design with comprehensive guides on architecture patterns, design patterns, and scalability. Learn microservices, caching, load balancing, and more.">
-    <meta property="og:image" content="https://anilinfo2015.github.io/assets/images/og-image.png">
-    <meta property="og:site_name" content="System Design Deep Dive">
-    
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://anilinfo2015.github.io/">
-    <meta property="twitter:title" content="System Design Deep Dive - Comprehensive Architecture Patterns Guide">
-    <meta property="twitter:description" content="Master system design with comprehensive guides on architecture patterns, design patterns, and scalability.">
-    <meta property="twitter:image" content="https://anilinfo2015.github.io/assets/images/og-image.png">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="apple-touch-icon" sizes="180x180" href="assets/images/apple-touch-icon.png">
-    
-    <!-- Preconnect for performance -->
+    <meta name="description" content="System Design Deep Dive - Comprehensive guide to architecture patterns, design patterns, and scalability best practices">
+    <meta name="keywords" content="system design, architecture patterns, microservices, scalability, design patterns">
+    <title>System Design Deep Dive</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
-    
-    <!-- Stylesheets -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="assets/css/index.css">
     <link rel="stylesheet" href="assets/css/font-awesome-enhancements.css">
-    
-    <!-- JSON-LD Structured Data -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "System Design Deep Dive",
-      "description": "Comprehensive guide to architecture patterns, design patterns, and scalability best practices",
-      "url": "https://anilinfo2015.github.io/",
-      "author": {
-        "@type": "Person",
-        "name": "Anilinfo2015"
-      },
-      "publisher": {
-        "@type": "Organization",
-        "name": "System Design Deep Dive",
-        "url": "https://anilinfo2015.github.io/"
-      },
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": {
-          "@type": "EntryPoint",
-          "urlTemplate": "https://anilinfo2015.github.io/?q={search_term_string}"
-        },
-        "query-input": "required name=search_term_string"
-      },
-      "mainEntity": {
-        "@type": "ItemList",
-        "name": "System Design Articles",
-        "description": "Collection of system design articles and patterns",
-        "numberOfItems": "8",
-        "itemListElement": [
-          {
-            "@type": "ListItem",
-            "position": 1,
-            "name": "Microservices Architecture",
-            "url": "https://anilinfo2015.github.io/architecture-patterns/microservices.html"
-          },
-          {
-            "@type": "ListItem",
-            "position": 2,
-            "name": "Caching Design Pattern",
-            "url": "https://anilinfo2015.github.io/design-patterns/caching.html"
-          }
-        ]
-      }
-    }
-    </script>
-    
-    <!-- Scripts -->
     <script defer src="assets/js/index.js"></script>
 </head>
 <body>
@@ -121,12 +42,12 @@
                 <div class="hero-stats">
                     <div class="stat">
                     <i class="fas fa-newspaper stat-icon"></i>
-                    <span class="stat-number">12</span>
+                    <span class="stat-number">20</span>
                     <span class="stat-label">Articles</span>
                 </div>
                 <div class="stat">
                     <i class="fas fa-layer-group stat-icon"></i>
-                    <span class="stat-number">5</span>
+                    <span class="stat-number">6</span>
                     <span class="stat-label">Categories</span>
                 </div>
                 <div class="stat">
@@ -139,7 +60,7 @@
     </header>
 
     <main class="container" id="latest">
-            <section class="featured-section">
+            <section class="featured-section reveal">
                 <div class="featured-card">
                     <div class="featured-badge"><i class="fas fa-star"></i> Featured</div>
                     <div class="featured-content">
@@ -151,7 +72,42 @@
                     </div>
                 </div>
             </section>
-            <section id="latest" class="recent-section">
+            <section class="featured-picks-section reveal">
+                <div class="section-head">
+                    <h2><span class="section-icon"><i class="fas fa-fire"></i></span> Editor's Picks</h2>
+                    <p>Hand-picked articles to accelerate your system design journey.</p>
+                </div>
+                <div class="featured-grid">
+                    <a href="system-design/design-youtube/02-deep-dive-1.html" class="featured-item">
+                        <span class="item-number">2</span>
+                        <h4>Deep Dive 1: Real-Time Analytics at 1 Million QPS</h4>
+                        <p>The moment a user hits play on a YouTube video, the counter increments. Not eventually, not in 5 minutes—instantly. You refresh the page and see 1,000 more views than a moment a...</p>
+                        <div class="item-meta">
+                            <span>System Design/design Youtube</span>
+                            <span><i class="fas fa-clock"></i> 8 min</span>
+                        </div>
+                    </a>
+                    <a href="system-design/design-youtube/01-foundations.html" class="featured-item">
+                        <span class="item-number">3</span>
+                        <h4>Part 1: Foundations - Top K YouTube Videos System</h4>
+                        <p>Imagine you're at YouTube's HQ. A user opens the "Trending" tab on their phone. Within milliseconds, they see the top 100 videos trending RIGHT NOW in their region. No lag, no s...</p>
+                        <div class="item-meta">
+                            <span>System Design/design Youtube</span>
+                            <span><i class="fas fa-clock"></i> 5 min</span>
+                        </div>
+                    </a>
+                    <a href="system-design/design-youtube/03-deep-dive-2.html" class="featured-item">
+                        <span class="item-number">4</span>
+                        <h4>Deep Dive 2: Transcoding Economics — Why AV1 Costs Less</h4>
+                        <p>A creator uploads a 4K video to YouTube. The original file is 30 GB, recorded from a RED camera. YouTube's system receives this file and must convert it into dozens of versions:...</p>
+                        <div class="item-meta">
+                            <span>System Design/design Youtube</span>
+                            <span><i class="fas fa-clock"></i> 9 min</span>
+                        </div>
+                    </a>
+                </div>
+            </section>
+            <section id="latest" class="recent-section reveal">
                 <div class="section-head">
                     <h2><span class="section-icon"><i class="fas fa-clock"></i></span> Latest Articles</h2>
                     <p>Fresh insights and recent updates across system design topics.</p>
@@ -165,14 +121,6 @@
                         <h4>Production Readiness: Operating YouTube at Scale</h4>
                         <p>You've built a beautiful system. Real-time analytics at 1M QPS. Efficient transcoding saving billions in bandwidth. Metadata consistency across PostgreSQL, Elasticsearch, Redis....</p>
                     </a>
-                    <a href="system-design/design-youtube/01-blueprint.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">System Design/design Youtube</span>
-                            <span class="recent-date">2026-01-19 • 13 min read</span>
-                        </div>
-                        <h4>The Blueprint: From Requirements to Architecture</h4>
-                        <p>When you hit play on a YouTube video, thousands of engineers' work converges in your browser in about 2 seconds. From a creator uploading a 4K video on unreliable WiFi to you wa...</p>
-                    </a>
                     <a href="system-design/design-youtube/02-deep-dive-1.html" class="recent-card">
                         <div class="recent-meta">
                             <span class="recent-category">System Design/design Youtube</span>
@@ -180,6 +128,14 @@
                         </div>
                         <h4>Deep Dive 1: Real-Time Analytics at 1 Million QPS</h4>
                         <p>The moment a user hits play on a YouTube video, the counter increments. Not eventually, not in 5 minutes—instantly. You refresh the page and see 1,000 more views than a moment a...</p>
+                    </a>
+                    <a href="system-design/design-youtube/01-foundations.html" class="recent-card">
+                        <div class="recent-meta">
+                            <span class="recent-category">System Design/design Youtube</span>
+                            <span class="recent-date">2026-01-19 • 5 min read</span>
+                        </div>
+                        <h4>Part 1: Foundations - Top K YouTube Videos System</h4>
+                        <p>Imagine you're at YouTube's HQ. A user opens the "Trending" tab on their phone. Within milliseconds, they see the top 100 videos trending RIGHT NOW in their region. No lag, no s...</p>
                     </a>
                     <a href="system-design/design-youtube/03-deep-dive-2.html" class="recent-card">
                         <div class="recent-meta">
@@ -197,24 +153,24 @@
                         <h4>Deep Dive 3: Metadata Consistency — Keeping Search in Sync</h4>
                         <p>A creator updates their video title from "Tutorial" to "Advanced JavaScript Tutorial for Beginners (2024)". They hit save. One millisecond later, the API responds: "Title update...</p>
                     </a>
-                    <a href="scalability/vertical-scaling.html" class="recent-card">
+                    <a href="system-design/Design-Web-Crawler/03-deep-dive-approach-a.html" class="recent-card">
                         <div class="recent-meta">
-                            <span class="recent-category">Scalability</span>
-                            <span class="recent-date">2026-01-19 • 1 min read</span>
+                            <span class="recent-category">System Design/design Web Crawler</span>
+                            <span class="recent-date">2026-01-19 • 6 min read</span>
                         </div>
-                        <h4>Vertical Scaling</h4>
-                        <p>Vertical scaling (scale-up) involves adding more resources (CPU, RAM, storage) to a single machine.</p>
+                        <h4>Designing a Web Crawler: Deep Dive (Approach A - Kafka Frontier)</h4>
+                        <p>The hardest part of a high-throughput crawler is not “fetch a page”. It’s coordinating millions of URLs across 100+ nodes while:</p>
                     </a>
                 </div>
             </section>
-            <section id="recommended" class="recommended-section">
+            <section id="recommended" class="recommended-section reveal">
                 <div class="section-head">
-                    <h2><span class="section-icon">⭐</span> Recommended Content</h2>
+                    <h2><span class="section-icon"><i class="fas fa-star"></i></span> Recommended Content</h2>
                     <p>Curated essential reads for system design mastery.</p>
                 </div>
                 <div class="recommended-grid">
                     <a href="architecture-patterns/microservices.html" class="recommended-card">
-                        <div class="recommended-badge">Essential</div>
+                        <div class="recommended-badge"><i class="fas fa-gem"></i> Essential</div>
                         <div class="recommended-content">
                             <h4>Microservices Architecture</h4>
                             <p>Microservices is an architectural style that structures an application as a collection of loosely coupled services.</p>
@@ -224,7 +180,7 @@
                         </div>
                     </a>
                     <a href="design-patterns/caching.html" class="recommended-card">
-                        <div class="recommended-badge">Essential</div>
+                        <div class="recommended-badge"><i class="fas fa-gem"></i> Essential</div>
                         <div class="recommended-content">
                             <h4>Caching Design Pattern</h4>
                             <p>Caching is a design pattern that stores frequently accessed data in a faster storage layer to improve performance and reduce latency.</p>
@@ -234,7 +190,7 @@
                         </div>
                     </a>
                     <a href="scalability/horizontal-scaling.html" class="recommended-card">
-                        <div class="recommended-badge">Essential</div>
+                        <div class="recommended-badge"><i class="fas fa-gem"></i> Essential</div>
                         <div class="recommended-content">
                             <h4>Horizontal Scaling</h4>
                             <p>Horizontal scaling (scale-out) involves adding more machines or nodes to your system to handle increased load.</p>
@@ -244,7 +200,7 @@
                         </div>
                     </a>
                     <a href="design-patterns/load-balancing.html" class="recommended-card">
-                        <div class="recommended-badge">Essential</div>
+                        <div class="recommended-badge"><i class="fas fa-gem"></i> Essential</div>
                         <div class="recommended-content">
                             <h4>Load Balancing Pattern</h4>
                             <p>Load balancing distributes incoming network traffic across multiple servers to ensure no single server bears too much load.</p>
@@ -255,7 +211,7 @@
                     </a>
                 </div>
             </section>
-            <section id="topics" class="topics-section">
+            <section id="topics" class="topics-section reveal">
                 <div class="section-head">
                     <h2><span class="section-icon"><i class="fas fa-tags"></i></span> Topics</h2>
                     <p>Browse by category to jump into a focused area.</p>
@@ -263,12 +219,13 @@
                 <div class="topics-grid">
                     <a class="topic-chip" href="#category-scalability">Scalability</a>
                     <a class="topic-chip" href="#category-architecture-patterns">Architecture Patterns</a>
+                    <a class="topic-chip" href="#category-system-design-Design-Web-Crawler">System Design/design Web Crawler</a>
                     <a class="topic-chip" href="#category-system-design-design-youtube">System Design/design Youtube</a>
                     <a class="topic-chip" href="#category-design-patterns">Design Patterns</a>
                     <a class="topic-chip" href="#category-root">Getting Started</a>
                 </div>
             </section>
-            <section id="all-content" class="all-content-section">
+            <section id="all-content" class="all-content-section reveal">
                 <h2><span class="section-icon"><i class="fas fa-folder-open"></i></span> All Content</h2>
                 <div class="categories-grid">
                 <div class="category-card" id="category-root">
@@ -281,9 +238,21 @@
                     </div>
                     <ul class="file-list">
                         <li>
+                            <a href="FONT-AWESOME-ENHANCEMENT-REPORT.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">🎨 Font Awesome Icons Enhancement Report</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="README.html">
                                 <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">systemdesign-deepdive</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="SEO-OPTIMIZATION-REPORT.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">SEO Optimization Report for System Design Deep Dive</span>
                             </a>
                         </li>
                     </ul>
@@ -299,13 +268,13 @@
                     <ul class="file-list">
                         <li>
                             <a href="architecture-patterns/event-driven.html">
-                                <span class="file-icon"><i class="fas fa-file-code"></i></span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Event-Driven Architecture</span>
                             </a>
                         </li>
                         <li>
                             <a href="architecture-patterns/microservices.html">
-                                <span class="file-icon"><i class="fas fa-file-code"></i></span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Microservices Architecture</span>
                             </a>
                         </li>
@@ -313,7 +282,7 @@
                 </div>
                 <div class="category-card" id="category-design-patterns">
                     <div class="category-header">
-                        <span class="category-icon">🎨</span>
+                        <span class="category-icon"><i class="fas fa-palette"></i></span>
                         <div>
                             <h3>Design Patterns</h3>
                             <p>Explore articles and patterns in this area.</p>
@@ -322,13 +291,13 @@
                     <ul class="file-list">
                         <li>
                             <a href="design-patterns/caching.html">
-                                <span class="file-icon"><i class="fas fa-file-code"></i></span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Caching Design Pattern</span>
                             </a>
                         </li>
                         <li>
                             <a href="design-patterns/load-balancing.html">
-                                <span class="file-icon"><i class="fas fa-file-code"></i></span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Load Balancing Pattern</span>
                             </a>
                         </li>
@@ -345,21 +314,68 @@
                     <ul class="file-list">
                         <li>
                             <a href="scalability/horizontal-scaling.html">
-                                <span class="file-icon"><i class="fas fa-file-code"></i></span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Horizontal Scaling</span>
                             </a>
                         </li>
                         <li>
                             <a href="scalability/vertical-scaling.html">
-                                <span class="file-icon"><i class="fas fa-file-code"></i></span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Vertical Scaling</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="category-card" id="category-system-design-Design-Web-Crawler">
+                    <div class="category-header">
+                        <span class="category-icon"><i class="fas fa-sitemap"></i></span>
+                        <div>
+                            <h3>System Design/design Web Crawler</h3>
+                            <p>Explore articles and patterns in this area.</p>
+                        </div>
+                    </div>
+                    <ul class="file-list">
+                        <li>
+                            <a href="system-design/Design-Web-Crawler/01-foundations.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Web Crawler: Foundations</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Web-Crawler/02-scale-analysis.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Web Crawler: Scale Analysis</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Web-Crawler/03-deep-dive-approach-a.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Web Crawler: Deep Dive (Approach A - Kafka Frontier)</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Web-Crawler/04-deep-dive-approach-b.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Web Crawler: Deep Dive (Approach B - Redis Frontier)</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Web-Crawler/05-security-auth.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Web Crawler: Security & Trust (Auth, Abuse, Compliance)</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Web-Crawler/06-production-readiness.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Web Crawler: Production Readiness (SLOs, Observability, Reliability)</span>
                             </a>
                         </li>
                     </ul>
                 </div>
                 <div class="category-card" id="category-system-design-design-youtube">
                     <div class="category-header">
-                        <span class="category-icon">🎨</span>
+                        <span class="category-icon"><i class="fas fa-sitemap"></i></span>
                         <div>
                             <h3>System Design/design Youtube</h3>
                             <p>Explore articles and patterns in this area.</p>
@@ -367,32 +383,32 @@
                     </div>
                     <ul class="file-list">
                         <li>
-                            <a href="system-design/design-youtube/01-blueprint.html">
-                                <span class="file-icon">📄</span>
-                                <span class="file-title">The Blueprint: From Requirements to Architecture</span>
+                            <a href="system-design/design-youtube/01-foundations.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Part 1: Foundations - Top K YouTube Videos System</span>
                             </a>
                         </li>
                         <li>
                             <a href="system-design/design-youtube/02-deep-dive-1.html">
-                                <span class="file-icon">📄</span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Deep Dive 1: Real-Time Analytics at 1 Million QPS</span>
                             </a>
                         </li>
                         <li>
                             <a href="system-design/design-youtube/03-deep-dive-2.html">
-                                <span class="file-icon">📄</span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Deep Dive 2: Transcoding Economics — Why AV1 Costs Less</span>
                             </a>
                         </li>
                         <li>
                             <a href="system-design/design-youtube/04-deep-dive-3.html">
-                                <span class="file-icon">📄</span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Deep Dive 3: Metadata Consistency — Keeping Search in Sync</span>
                             </a>
                         </li>
                         <li>
                             <a href="system-design/design-youtube/05-production-readiness.html">
-                                <span class="file-icon">📄</span>
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Production Readiness: Operating YouTube at Scale</span>
                             </a>
                         </li>
@@ -401,30 +417,37 @@
                 </div>
             </section>
 
-            <section class="cta-section">
+            <section class="cta-section reveal">
                 <div class="cta-card">
                     <div>
                         <h2>Stay sharp on system design.</h2>
                         <p>Bookmark the library, follow updates, and keep a living reference for design interviews and real-world architecture.</p>
                     </div>
                     <div class="cta-actions">
-                        <a class="btn primary" href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer">Follow on GitHub</a>
-                        <a class="btn ghost" href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues" target="_blank" rel="noreferrer">Request a topic</a>
+                        <a class="btn primary" href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer"><i class="fab fa-github"></i> Follow on GitHub</a>
+                        <a class="btn ghost" href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues" target="_blank" rel="noreferrer"><i class="fas fa-lightbulb"></i> Request a topic</a>
                     </div>
                 </div>
             </section>
     </main>
 
+    <!-- Back to Top Button -->
+    <button class="back-to-top" aria-label="Back to top">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+
     <footer class="footer">
-        <div class="footer-content">
-            <h3>System Design Deep Dive</h3>
-            <p>Your comprehensive resource for understanding system design concepts, architecture patterns, and best practices.</p>
-            <div class="footer-links">
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive">📦 Repository</a>
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues">🐛 Report Issue</a>
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/pulls">🔀 Contribute</a>
+        <div class="container">
+            <div class="footer-content">
+                <h3><i class="fas fa-book-open"></i> System Design Deep Dive</h3>
+                <p>Your comprehensive resource for understanding system design concepts, architecture patterns, and best practices.</p>
+                <div class="footer-links">
+                    <a href="https://github.com/Anilinfo2015/systemdesign-deepdive"><i class="fab fa-github"></i> Repository</a>
+                    <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues"><i class="fas fa-bug"></i> Report Issue</a>
+                    <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/pulls"><i class="fas fa-code-branch"></i> Contribute</a>
+                </div>
+                <p class="copyright">© 2026 System Design Deep Dive. Built with ❤️ for developers.</p>
             </div>
-            <p class="copyright">© 2026 System Design Deep Dive. Built with ❤️ for developers.</p>
         </div>
     </footer>
 </body>

@@ -177,21 +177,22 @@ generate_category_html() {
     local files="$2"
     local category_title
     local category_id
+    local icon_class
     
     if [ "$category" = "root" ]; then
         category_title="Getting Started"
-        icon="🚀"
+        icon_class="fas fa-rocket"
     else
         category_title=$(to_title_case "$category")
         case "$category" in
-            *design*) icon="🎨" ;;
-            *architecture*) icon="🏗️" ;;
-            *scalability*) icon="📈" ;;
-            *security*) icon="🔒" ;;
-            *database*) icon="💾" ;;
-            *pattern*) icon="🧩" ;;
-            *system-design*) icon="🖥️" ;;
-            *) icon="📂" ;;
+            *design-patterns*) icon_class="fas fa-palette" ;;
+            *architecture*) icon_class="fas fa-building" ;;
+            *scalability*) icon_class="fas fa-chart-line" ;;
+            *security*) icon_class="fas fa-shield-alt" ;;
+            *database*) icon_class="fas fa-database" ;;
+            *system-design*) icon_class="fas fa-sitemap" ;;
+            *youtube*) icon_class="fab fa-youtube" ;;
+            *) icon_class="fas fa-folder" ;;
         esac
     fi
 
@@ -199,7 +200,7 @@ generate_category_html() {
     
     echo "                <div class=\"category-card\" id=\"category-$category_id\">"
     echo "                    <div class=\"category-header\">"
-    echo "                        <span class=\"category-icon\">$icon</span>"
+    echo "                        <span class=\"category-icon\"><i class=\"$icon_class\"></i></span>"
     echo "                        <div>"
     echo "                            <h3>$category_title</h3>"
     echo "                            <p>Explore articles and patterns in this area.</p>"
@@ -214,7 +215,7 @@ generate_category_html() {
         html_path="${path%.md}.html"
         echo "                        <li>"
         echo "                            <a href=\"$html_path\">"
-        echo "                                <span class=\"file-icon\">📄</span>"
+        echo "                                <span class=\"file-icon\"><i class=\"fas fa-file-alt\"></i></span>"
         echo "                                <span class=\"file-title\">$title</span>"
         echo "                            </a>"
         echo "                        </li>"
@@ -226,9 +227,9 @@ generate_category_html() {
 
 # Generate recent files (sorted by date, limit to 5)
 generate_recent_html() {
-    echo "            <section id=\"latest\" class=\"recent-section\">"
+    echo "            <section id=\"latest\" class=\"recent-section reveal\">"
     echo "                <div class=\"section-head\">"
-    echo "                    <h2><span class=\"section-icon\">🕐</span> Latest Articles</h2>"
+    echo "                    <h2><span class=\"section-icon\"><i class=\"fas fa-clock\"></i></span> Latest Articles</h2>"
     echo "                    <p>Fresh insights and recent updates across system design topics.</p>"
     echo "                </div>"
     echo "                <div class=\"recent-grid\">"
@@ -265,9 +266,9 @@ generate_recent_html() {
 
 # Generate recommended content
 generate_recommended_html() {
-    echo "            <section id=\"recommended\" class=\"recommended-section\">"
+    echo "            <section id=\"recommended\" class=\"recommended-section reveal\">"
     echo "                <div class=\"section-head\">"
-    echo "                    <h2><span class=\"section-icon\">⭐</span> Recommended Content</h2>"
+    echo "                    <h2><span class=\"section-icon\"><i class=\"fas fa-star\"></i></span> Recommended Content</h2>"
     echo "                    <p>Curated essential reads for system design mastery.</p>"
     echo "                </div>"
     echo "                <div class=\"recommended-grid\">"
@@ -291,7 +292,7 @@ generate_recommended_html() {
                 fi
                 
                 echo "                    <a href=\"$html_path\" class=\"recommended-card\">"
-                echo "                        <div class=\"recommended-badge\">Essential</div>"
+                echo "                        <div class=\"recommended-badge\"><i class=\"fas fa-gem\"></i> Essential</div>"
                 echo "                        <div class=\"recommended-content\">"
                 echo "                            <h4>$title</h4>"
                 echo "                            <p>$excerpt</p>"
@@ -309,49 +310,101 @@ generate_recommended_html() {
     echo "            </section>"
 }
 
-# Generate featured article section
+# Generate featured article section with 3-4 featured items
 generate_featured_html() {
-    local featured
-    featured=$(for f in "${all_files[@]}"; do echo "$f"; done | sort -t'|' -k3 -r | head -1)
-
-    IFS='|' read -r path title date dir excerpt read_time <<< "$featured"
-
-    if [ -z "$path" ]; then
+    # Get top 4 articles by date
+    local featured_files
+    featured_files=$(for f in "${all_files[@]}"; do echo "$f"; done | sort -t'|' -k3 -r | head -4)
+    
+    # First article gets the hero treatment
+    local count=0
+    local first_article=""
+    
+    while IFS='|' read -r path title date dir excerpt read_time; do
+        [ -z "$path" ] && continue
+        if [ $count -eq 0 ]; then
+            first_article="$path|$title|$date|$dir|$excerpt|$read_time"
+        fi
+        count=$((count + 1))
+    done <<< "$featured_files"
+    
+    if [ -z "$first_article" ]; then
         return
     fi
-
+    
+    IFS='|' read -r path title date dir excerpt read_time <<< "$first_article"
+    
     local html_path="${path%.md}.html"
     local category_title
-
+    
     if [ "$dir" = "." ]; then
         category_title="Getting Started"
     else
         category_title=$(to_title_case "$dir")
     fi
-
+    
     if [ -z "$excerpt" ]; then
         excerpt="Read the full article for frameworks, diagrams, and tradeoffs."
     fi
-
-    echo "            <section class=\"featured-section\">"
+    
+    # Main featured article
+    echo "            <section class=\"featured-section reveal\">"
     echo "                <div class=\"featured-card\">"
-    echo "                    <div class=\"featured-badge\">Featured</div>"
+    echo "                    <div class=\"featured-badge\"><i class=\"fas fa-star\"></i> Featured</div>"
     echo "                    <div class=\"featured-content\">"
     echo "                        <span class=\"featured-category\">$category_title</span>"
     echo "                        <h2>$title</h2>"
     echo "                        <p>$excerpt</p>"
-    echo "                        <div class=\"featured-meta\">$date • $read_time min read</div>"
-    echo "                        <a class=\"featured-cta\" href=\"$html_path\">Read the story</a>"
+    echo "                        <div class=\"featured-meta\"><i class=\"fas fa-calendar-alt\"></i> $date <i class=\"fas fa-clock\"></i> $read_time min read</div>"
+    echo "                        <a class=\"featured-cta\" href=\"$html_path\"><i class=\"fas fa-book-open\"></i> Read the story</a>"
     echo "                    </div>"
+    echo "                </div>"
+    echo "            </section>"
+    
+    # Featured grid with remaining 3 articles
+    echo "            <section class=\"featured-picks-section reveal\">"
+    echo "                <div class=\"section-head\">"
+    echo "                    <h2><span class=\"section-icon\"><i class=\"fas fa-fire\"></i></span> Editor's Picks</h2>"
+    echo "                    <p>Hand-picked articles to accelerate your system design journey.</p>"
+    echo "                </div>"
+    echo "                <div class=\"featured-grid\">"
+    
+    count=0
+    while IFS='|' read -r path title date dir excerpt read_time; do
+        [ -z "$path" ] && continue
+        count=$((count + 1))
+        [ $count -eq 1 ] && continue  # Skip first (already featured)
+        
+        html_path="${path%.md}.html"
+        if [ "$dir" = "." ]; then
+            category_title="Getting Started"
+        else
+            category_title=$(to_title_case "$dir")
+        fi
+        if [ -z "$excerpt" ]; then
+            excerpt="Explore patterns and best practices."
+        fi
+        
+        echo "                    <a href=\"$html_path\" class=\"featured-item\">"
+        echo "                        <span class=\"item-number\">$count</span>"
+        echo "                        <h4>$title</h4>"
+        echo "                        <p>$excerpt</p>"
+        echo "                        <div class=\"item-meta\">"
+        echo "                            <span>$category_title</span>"
+        echo "                            <span><i class=\"fas fa-clock\"></i> $read_time min</span>"
+        echo "                        </div>"
+        echo "                    </a>"
+    done <<< "$featured_files"
+    
     echo "                </div>"
     echo "            </section>"
 }
 
 # Generate topics chips
 generate_topics_html() {
-    echo "            <section id=\"topics\" class=\"topics-section\">"
+    echo "            <section id=\"topics\" class=\"topics-section reveal\">"
     echo "                <div class=\"section-head\">"
-    echo "                    <h2><span class=\"section-icon\">🏷️</span> Topics</h2>"
+    echo "                    <h2><span class=\"section-icon\"><i class=\"fas fa-tags\"></i></span> Topics</h2>"
     echo "                    <p>Browse by category to jump into a focused area.</p>"
     echo "                </div>"
     echo "                <div class=\"topics-grid\">"
@@ -389,21 +442,23 @@ cat > index.html << 'HTMLHEAD'
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="assets/css/index.css">
+    <link rel="stylesheet" href="assets/css/font-awesome-enhancements.css">
     <script defer src="assets/js/index.js"></script>
 </head>
 <body>
     <header class="site-header">
         <div class="container wide">
-            <a href="./" class="brand">📚 System Design Deep Dive</a>
+            <a href="./" class="brand"><i class="fas fa-book-open"></i> System Design Deep Dive</a>
             <nav class="nav-links" id="site-nav">
-                <a href="#latest">Latest</a>
-                <a href="#recommended">Recommended</a>
-                <a href="#topics">Topics</a>
-                <a href="#all-content">All Articles</a>
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer">GitHub</a>
+                <a href="#latest"><i class="fas fa-clock"></i> Latest</a>
+                <a href="#recommended"><i class="fas fa-star"></i> Recommended</a>
+                <a href="#topics"><i class="fas fa-tags"></i> Topics</a>
+                <a href="#all-content"><i class="fas fa-th-list"></i> All Articles</a>
+                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer"><i class="fab fa-github"></i> GitHub</a>
             </nav>
-            <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav">☰</button>
+            <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav"><i class="fas fa-bars"></i></button>
         </div>
     </header>
 
@@ -414,21 +469,24 @@ cat > index.html << 'HTMLHEAD'
                 <h1>Design systems like a seasoned architect.</h1>
                 <p>Deep dives, practical patterns, and battle-tested tradeoffs to help you build resilient, scalable platforms.</p>
                 <div class="hero-actions">
-                    <a class="btn primary" href="#all-content">Browse library</a>
-                    <a class="btn ghost" href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer">Star on GitHub</a>
+                    <a class="btn primary" href="#all-content"><i class="fas fa-book-reader"></i> Browse library</a>
+                    <a class="btn ghost" href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer"><i class="fas fa-star"></i> Star on GitHub</a>
                 </div>
                 <div class="hero-stats">
                     <div class="stat">
+                    <i class="fas fa-newspaper stat-icon"></i>
 HTMLHEAD
 
 echo "                    <span class=\"stat-number\">$total_files</span>" >> index.html
 echo "                    <span class=\"stat-label\">Articles</span>" >> index.html
 echo "                </div>" >> index.html
 echo "                <div class=\"stat\">" >> index.html
+echo "                    <i class=\"fas fa-layer-group stat-icon\"></i>" >> index.html
 echo "                    <span class=\"stat-number\">$total_categories</span>" >> index.html
 echo "                    <span class=\"stat-label\">Categories</span>" >> index.html
 echo "                </div>" >> index.html
 echo "                <div class=\"stat\">" >> index.html
+echo "                    <i class=\"fas fa-infinity stat-icon\"></i>" >> index.html
 echo "                    <span class=\"stat-number\">∞</span>" >> index.html
 echo "                    <span class=\"stat-label\">Knowledge</span>" >> index.html
 echo "                </div>" >> index.html
@@ -454,8 +512,8 @@ generate_recommended_html >> index.html
 generate_topics_html >> index.html
 
 # Generate all content section
-echo "            <section id=\"all-content\" class=\"all-content-section\">" >> index.html
-echo "                <h2><span class=\"section-icon\">📂</span> All Content</h2>" >> index.html
+echo "            <section id=\"all-content\" class=\"all-content-section reveal\">" >> index.html
+echo "                <h2><span class=\"section-icon\"><i class=\"fas fa-folder-open\"></i></span> All Content</h2>" >> index.html
 echo "                <div class=\"categories-grid\">" >> index.html
 
 # Output categories in a specific order
@@ -478,30 +536,37 @@ cat >> index.html << 'HTMLFOOT'
                 </div>
             </section>
 
-            <section class="cta-section">
+            <section class="cta-section reveal">
                 <div class="cta-card">
                     <div>
                         <h2>Stay sharp on system design.</h2>
                         <p>Bookmark the library, follow updates, and keep a living reference for design interviews and real-world architecture.</p>
                     </div>
                     <div class="cta-actions">
-                        <a class="btn primary" href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer">Follow on GitHub</a>
-                        <a class="btn ghost" href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues" target="_blank" rel="noreferrer">Request a topic</a>
+                        <a class="btn primary" href="https://github.com/Anilinfo2015/systemdesign-deepdive" target="_blank" rel="noreferrer"><i class="fab fa-github"></i> Follow on GitHub</a>
+                        <a class="btn ghost" href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues" target="_blank" rel="noreferrer"><i class="fas fa-lightbulb"></i> Request a topic</a>
                     </div>
                 </div>
             </section>
     </main>
 
+    <!-- Back to Top Button -->
+    <button class="back-to-top" aria-label="Back to top">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+
     <footer class="footer">
-        <div class="footer-content">
-            <h3>System Design Deep Dive</h3>
-            <p>Your comprehensive resource for understanding system design concepts, architecture patterns, and best practices.</p>
-            <div class="footer-links">
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive">📦 Repository</a>
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues">🐛 Report Issue</a>
-                <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/pulls">🔀 Contribute</a>
+        <div class="container">
+            <div class="footer-content">
+                <h3><i class="fas fa-book-open"></i> System Design Deep Dive</h3>
+                <p>Your comprehensive resource for understanding system design concepts, architecture patterns, and best practices.</p>
+                <div class="footer-links">
+                    <a href="https://github.com/Anilinfo2015/systemdesign-deepdive"><i class="fab fa-github"></i> Repository</a>
+                    <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/issues"><i class="fas fa-bug"></i> Report Issue</a>
+                    <a href="https://github.com/Anilinfo2015/systemdesign-deepdive/pulls"><i class="fas fa-code-branch"></i> Contribute</a>
+                </div>
+                <p class="copyright">© 2026 System Design Deep Dive. Built with ❤️ for developers.</p>
             </div>
-            <p class="copyright">© 2026 System Design Deep Dive. Built with ❤️ for developers.</p>
         </div>
     </footer>
 </body>
