@@ -1,0 +1,21 @@
+{
+    "name": "System Design Deep Dive",
+    "short_name": "System Design",
+    "description": "Comprehensive guide to architecture patterns and scalability",
+    "start_url": "/systemdesign-deepdive/",
+    "display": "standalone",
+    "theme_color": "#2563eb",
+    "background_color": "#ffffff",
+    "icons": [
+        {
+            "src": "assets/images/icon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "assets/images/icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

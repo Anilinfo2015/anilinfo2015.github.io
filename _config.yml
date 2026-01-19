@@ -1,8 +1,29 @@
 # Jekyll configuration for System Design Deep Dive
 title: "System Design Deep Dive"
-description: "Comprehensive guide to architecture patterns, design patterns, and scalability best practices"
+description: "Comprehensive guide to architecture patterns, design patterns, and scalability best practices. Learn microservices, event-driven architecture, caching strategies, load balancing, horizontal and vertical scaling."
 author: "Anilinfo2015"
+email: "anilinfo2015@example.com"
 url: "https://anilinfo2015.github.io/systemdesign-deepdive"
+
+# SEO settings
+lang: en_US
+timezone: UTC
+locale: en_US
+
+# Social media and SEO
+social:
+  name: "Anilinfo2015"
+  links:
+    - https://github.com/anilinfo2015
+
+# Analytics and verification (add your actual IDs)
+google_analytics: # Add your Google Analytics ID
+google_site_verification: # Add your Google Search Console verification
+bing_site_verification: # Add your Bing Webmaster verification
+
+# RSS feed
+feed:
+  path: atom.xml
 
 # Build settings
 markdown: kramdown

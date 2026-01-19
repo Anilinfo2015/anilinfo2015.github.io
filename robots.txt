@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://anilinfo2015.github.io/systemdesign-deepdive/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
+
+# Block access to admin and internal paths if any
+Disallow: /.git/
+Disallow: /_*
+Disallow: /scripts/
+
+# Allow all content
+Allow: /architecture-patterns/
+Allow: /design-patterns/
+Allow: /scalability/
+Allow: /assets/
+Allow: /system-design/
