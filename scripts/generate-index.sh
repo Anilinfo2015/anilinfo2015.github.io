@@ -125,6 +125,63 @@ get_read_time() {
     echo "$minutes"
 }
 
+# Config file path
+CONFIG_FILE="$SCRIPT_DIR/config.yml"
+
+# Function to parse YAML config and get list of files for a section
+# Usage: get_config_articles "section_name"
+# Returns newline-separated list of file paths
+get_config_articles() {
+    local section="$1"
+    
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo ""
+        return
+    fi
+    
+    # Parse YAML using awk - extract lines under the section until next section or EOF
+    awk -v section="$section:" '
+        BEGIN { in_section = 0 }
+        /^[a-zA-Z_]+:/ {
+            if ($0 ~ "^" section) {
+                in_section = 1
+                next
+            } else {
+                in_section = 0
+            }
+        }
+        in_section && /^[[:space:]]+-[[:space:]]+/ {
+            sub(/^[[:space:]]+-[[:space:]]+/, "")
+            gsub(/[[:space:]]*$/, "")
+            if (length($0) > 0) print
+        }
+    ' "$CONFIG_FILE"
+}
+
+# Function to get file info string for a given file path
+# Returns: "path|title|date|dir|excerpt|read_time" or empty if file not found
+get_file_info() {
+    local rel_path="$1"
+    local file="./$rel_path"
+    
+    if [ ! -f "$file" ]; then
+        echo ""
+        return
+    fi
+    
+    local title=$(get_md_title "$file")
+    local date=$(get_file_date "$file")
+    local dir=$(dirname "$rel_path")
+    local excerpt=$(get_md_excerpt "$file")
+    local read_time=$(get_read_time "$file")
+    
+    if [ "$dir" = "." ]; then
+        dir="."
+    fi
+    
+    echo "$rel_path|$title|$date|$dir|$excerpt|$read_time"
+}
+
 # Collect all markdown files organized by directory
 declare -A categories
 declare -a all_files
@@ -273,38 +330,68 @@ generate_recommended_html() {
     echo "                </div>"
     echo "                <div class=\"recommended-grid\">"
     
-    # Prioritize certain topics as recommended
-    local recommended_patterns=("microservices" "caching" "horizontal-scaling" "load-balancing")
+    local recommended_articles=""
     
-    for pattern in "${recommended_patterns[@]}"; do
-        for file_info in "${all_files[@]}"; do
-            IFS='|' read -r path title date dir excerpt read_time <<< "$file_info"
-            if [[ "$path" == *"$pattern"* ]]; then
-                html_path="${path%.md}.html"
-                local category_title
-                if [ "$dir" = "." ]; then
-                    category_title="Getting Started"
+    # Try to get recommended articles from config
+    local config_recommended=$(get_config_articles "recommended" | head -4)
+    if [ -n "$config_recommended" ]; then
+        while IFS= read -r rec_path; do
+            [ -z "$rec_path" ] && continue
+            local rec_info=$(get_file_info "$rec_path")
+            if [ -n "$rec_info" ]; then
+                if [ -z "$recommended_articles" ]; then
+                    recommended_articles="$rec_info"
                 else
-                    category_title=$(to_title_case "$dir")
+                    recommended_articles="$recommended_articles"$'\n'"$rec_info"
                 fi
-                if [ -z "$excerpt" ]; then
-                    excerpt="Essential patterns and tradeoffs for building scalable systems."
-                fi
-                
-                echo "                    <a href=\"$html_path\" class=\"recommended-card\">"
-                echo "                        <div class=\"recommended-badge\"><i class=\"fas fa-gem\"></i> Essential</div>"
-                echo "                        <div class=\"recommended-content\">"
-                echo "                            <h4>$title</h4>"
-                echo "                            <p>$excerpt</p>"
-                echo "                        </div>"
-                echo "                        <div class=\"recommended-footer\">"
-                echo "                            <span class=\"recommended-category\">$category_title • $read_time min read</span>"
-                echo "                        </div>"
-                echo "                    </a>"
-                break
             fi
+        done <<< "$config_recommended"
+    fi
+    
+    # Fallback to pattern-based recommendation if config not available
+    if [ -z "$recommended_articles" ]; then
+        local recommended_patterns=("microservices" "caching" "horizontal-scaling" "load-balancing")
+        
+        for pattern in "${recommended_patterns[@]}"; do
+            for file_info in "${all_files[@]}"; do
+                IFS='|' read -r path _ <<< "$file_info"
+                if [[ "$path" == *"$pattern"* ]]; then
+                    if [ -z "$recommended_articles" ]; then
+                        recommended_articles="$file_info"
+                    else
+                        recommended_articles="$recommended_articles"$'\n'"$file_info"
+                    fi
+                    break
+                fi
+            done
         done
-    done
+    fi
+    
+    # Render recommended articles
+    while IFS='|' read -r path title date dir excerpt read_time; do
+        [ -z "$path" ] && continue
+        local html_path="${path%.md}.html"
+        local category_title
+        if [ "$dir" = "." ]; then
+            category_title="Getting Started"
+        else
+            category_title=$(to_title_case "$dir")
+        fi
+        if [ -z "$excerpt" ]; then
+            excerpt="Essential patterns and tradeoffs for building scalable systems."
+        fi
+        
+        echo "                    <a href=\"$html_path\" class=\"recommended-card\">"
+        echo "                        <div class=\"recommended-badge\"><i class=\"fas fa-gem\"></i> Essential</div>"
+        echo "                        <div class=\"recommended-content\">"
+        echo "                            <h4>$title</h4>"
+        echo "                            <p>$excerpt</p>"
+        echo "                        </div>"
+        echo "                        <div class=\"recommended-footer\">"
+        echo "                            <span class=\"recommended-category\">$category_title • $read_time min read</span>"
+        echo "                        </div>"
+        echo "                    </a>"
+    done <<< "$recommended_articles"
     
     echo "                </div>"
     echo "            </section>"
@@ -312,21 +399,42 @@ generate_recommended_html() {
 
 # Generate featured article section with 3-4 featured items
 generate_featured_html() {
-    # Get top 4 articles by date
-    local featured_files
-    featured_files=$(for f in "${all_files[@]}"; do echo "$f"; done | sort -t'|' -k3 -r | head -4)
-    
-    # First article gets the hero treatment
-    local count=0
     local first_article=""
+    local editors_picks=""
     
-    while IFS='|' read -r path title date dir excerpt read_time; do
-        [ -z "$path" ] && continue
-        if [ $count -eq 0 ]; then
-            first_article="$path|$title|$date|$dir|$excerpt|$read_time"
-        fi
-        count=$((count + 1))
-    done <<< "$featured_files"
+    # Try to get featured article from config
+    local config_featured=$(get_config_articles "featured" | head -1)
+    if [ -n "$config_featured" ]; then
+        first_article=$(get_file_info "$config_featured")
+    fi
+    
+    # Fallback to date-sorted if config not available or file not found
+    if [ -z "$first_article" ]; then
+        first_article=$(for f in "${all_files[@]}"; do echo "$f"; done | sort -t'|' -k3 -r | head -1)
+    fi
+    
+    # Try to get editor's picks from config
+    local config_picks=$(get_config_articles "editors_picks" | head -3)
+    if [ -n "$config_picks" ]; then
+        while IFS= read -r pick_path; do
+            [ -z "$pick_path" ] && continue
+            local pick_info=$(get_file_info "$pick_path")
+            if [ -n "$pick_info" ]; then
+                if [ -z "$editors_picks" ]; then
+                    editors_picks="$pick_info"
+                else
+                    editors_picks="$editors_picks"$'\n'"$pick_info"
+                fi
+            fi
+        done <<< "$config_picks"
+    fi
+    
+    # Fallback to date-sorted (excluding featured) if config not available
+    if [ -z "$editors_picks" ]; then
+        local featured_path=""
+        IFS='|' read -r featured_path _ <<< "$first_article"
+        editors_picks=$(for f in "${all_files[@]}"; do echo "$f"; done | sort -t'|' -k3 -r | grep -v "^$featured_path|" | head -3)
+    fi
     
     if [ -z "$first_article" ]; then
         return
@@ -361,7 +469,7 @@ generate_featured_html() {
     echo "                </div>"
     echo "            </section>"
     
-    # Featured grid with remaining 3 articles
+    # Featured grid with editor's picks
     echo "            <section class=\"featured-picks-section reveal\">"
     echo "                <div class=\"section-head\">"
     echo "                    <h2><span class=\"section-icon\"><i class=\"fas fa-fire\"></i></span> Editor's Picks</h2>"
@@ -369,11 +477,10 @@ generate_featured_html() {
     echo "                </div>"
     echo "                <div class=\"featured-grid\">"
     
-    count=0
+    local count=1
     while IFS='|' read -r path title date dir excerpt read_time; do
         [ -z "$path" ] && continue
         count=$((count + 1))
-        [ $count -eq 1 ] && continue  # Skip first (already featured)
         
         html_path="${path%.md}.html"
         if [ "$dir" = "." ]; then
@@ -394,7 +501,7 @@ generate_featured_html() {
         echo "                            <span><i class=\"fas fa-clock\"></i> $read_time min</span>"
         echo "                        </div>"
         echo "                    </a>"
-    done <<< "$featured_files"
+    done <<< "$editors_picks"
     
     echo "                </div>"
     echo "            </section>"

@@ -1,0 +1,29 @@
+# Configuration for index.html generation
+# Content writers can specify which articles appear in featured sections
+# 
+# Use the relative path to the markdown file from the repository root.
+# Example: architecture-patterns/microservices.md
+#
+# If a file path is invalid or the file doesn't exist, it will be skipped.
+# If no articles are specified in a section, the script will fall back to
+# date-based (for featured) or pattern-based (for recommended) selection.
+
+# Featured article - The main hero article at the top of the page
+# Only the first entry is used (single featured article)
+featured:
+  - architecture-patterns/microservices.md
+
+# Editor's Picks - Up to 3 articles shown in the Editor's Picks section
+# These appear after the featured article
+editors_picks:
+  - scalability/horizontal-scaling.md
+  - design-patterns/caching.md
+  - architecture-patterns/event-driven.md
+
+# Recommended Content - Up to 4 articles shown in the Recommended section
+# These are marked as "Essential" reads
+recommended:
+  - architecture-patterns/microservices.md
+  - design-patterns/caching.md
+  - scalability/horizontal-scaling.md
+  - design-patterns/load-balancing.md
