@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design an In-Memory Key-Value Store (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~18 minutes"
+readingTime: "~24 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Key-Value Store", "TTL", "Transactions", "Concurrency"]
+topics: ["Low-Level Design", "Key-Value Store", "TTL", "Transactions", "Concurrency", "Redis", "Dynamo"]
 ---
 
 # LLD Walkthrough: Design an In-Memory Key-Value Store
@@ -302,6 +302,90 @@ Anti-patterns to call out:
 If there is time, name tests: put/get, delete, TTL expiry, read-your-writes, rollback, atomic commit, closed-transaction rejection, and the documented conflict behavior.
 
 That is enough. You built a key-value store, not a pretend database product.
+
+---
+
+## How real systems solve this
+
+Redis is the closest production analogy to the scoped interview design. It executes commands on a single thread, so individual commands are atomic without per-key locking in the command path. It also keeps the data model broader than a raw string map: strings, lists, sets, hashes, and sorted sets all sit behind a key-based API.
+
+Redis TTL behavior is also more nuanced than a toy map. Correctness can rely on lazy expiry when a key is accessed, while active random sampling reclaims cold expired keys in the background. Durability is a separate concern: Redis can persist with RDB snapshots and an append-only file, but the in-memory LLD should keep persistence behind a seam rather than mixing it into `get` and `put`.
+
+Dynamo pushes the same key-value idea into a distributed system. It uses consistent hashing with virtual nodes for distribution and minimal rebalancing, stores N replicas, and lets clients tune quorum reads and writes with the `R + W > N` rule. Concurrent versions are detected with vector clocks and returned as siblings for application reconciliation.
+
+The important interview distinction is that Redis-style command atomicity and Dynamo-style eventual consistency solve different problems. The single-process store needs a map, TTL, and a lock. A distributed store adds partitioning, replication, hinted handoff for temporary failures, and Merkle-tree anti-entropy. Those are real extensions, not changes to the basic `Store<K,V>` API.
+
+## Reference implementation
+
+This Python core shows a thread-safe in-memory store with per-key TTL and lazy expiry on read.
+
+```python
+from __future__ import annotations
+
+from dataclasses import dataclass
+from threading import RLock
+from time import monotonic
+from typing import Any
+
+@dataclass(frozen=True)
+class Entry:
+    value: Any
+    expires_at: float | None
+
+class InMemoryKV:
+    def __init__(self) -> None:
+        self._data: dict[str, Entry] = {}
+        self._lock = RLock()
+
+    def put(self, key: str, value: Any, ttl_seconds: float | None = None) -> None:
+        if ttl_seconds is not None and ttl_seconds < 0:
+            raise ValueError("ttl_seconds must be non-negative")
+        expires_at = None if ttl_seconds is None else monotonic() + ttl_seconds
+        with self._lock:
+            self._data[key] = Entry(value, expires_at)
+
+    def get(self, key: str) -> Any | None:
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return None
+            if entry.expires_at is not None and entry.expires_at <= monotonic():
+                self._data.pop(key, None)
+                return None
+            return entry.value
+
+    def delete(self, key: str) -> bool:
+        with self._lock:
+            return self._data.pop(key, None) is not None
+
+    def size(self) -> int:
+        with self._lock:
+            for key in list(self._data.keys()):
+                self.get(key)  # lazy cleanup under re-entrant lock
+            return len(self._data)
+```
+
+## Complexity and trade-offs
+
+| Operation | Time | Space | Notes |
+|---|---:|---:|---|
+| `put` | O(1) average | O(1) per key | Stores value plus optional expiry timestamp. |
+| `get` live key | O(1) average | O(1) | Checks expiry before returning. |
+| `get` expired key | O(1) average | Frees one entry | Lazy expiry removes on access. |
+| `delete` | O(1) average | Frees one entry | Idempotent for missing keys. |
+| Transaction read from write-set | O(1) average | O(touched keys) | Checks pending deletes/puts before committed map. |
+| Commit write-set | O(k) | O(1) extra | Applies k touched keys under the store write lock. |
+
+- Lazy expiry is correct and simple, but cold expired keys can occupy memory until read or sampled by a sweeper.
+- A single lock is easy to reason about; per-key locks or optimistic versions only matter after contention is measured.
+- Write-set transactions avoid rollback complexity because uncommitted writes never modify the committed map.
+- Distributed KV stores add conflict detection and repair; do not imply the in-memory design has Dynamo-style availability.
+
+## Further reading
+
+- [Dynamo: Amazon's Highly Available Key-value Store](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf) — Canonical paper on consistent hashing, quorum reads/writes, vector clocks, hinted handoff, and anti-entropy.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — Clear treatment of replication, partitioning, consistency, and log-based storage trade-offs.
+- [Redis eviction policies](https://redis.io/docs/latest/develop/reference/eviction/) — Helpful companion for TTL, memory pressure, and key eviction behavior in an in-memory system.
 
 ---
 

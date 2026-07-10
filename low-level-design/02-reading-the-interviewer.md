@@ -1,10 +1,10 @@
 ---
 title: "Reading the Interviewer: Decoding What an LLD Interviewer Actually Wants"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~12 minutes"
+readingTime: "~14 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Interview Signals", "Communication", "Judgment"]
+topics: ["Low-Level Design", "Interview Signals", "Communication", "Judgment", "Follow-ups"]
 ---
 
 # Reading the Interviewer
@@ -98,6 +98,31 @@ Sometimes the question is just unclear. Don't fake it and don't freeze. Reflect 
 > "When you say 'handle notifications reliably,' do you mean retries on failure, or ordering guarantees, or both? I want to design the right thing."
 
 Naming the interpretations shows you understand the *space* even if you don't yet know which one they want — and it's far stronger than a confident answer to the wrong question. The failure mode "I couldn't understand what they were asking" is almost always fixable by reflecting the ambiguity back instead of guessing.
+
+---
+
+## A worked example
+
+Suppose you are designing an LRU cache. The interviewer gives one of these follow-ups:
+
+| Interviewer prompt | What they are likely grading | Adjust like this |
+|---|---|---|
+| "What if two threads call `get` and `put` at the same time?" | Concurrency and invariant awareness. | Name the invariant: map and list must stay consistent. Guard the combined update with one lock or a clearer concurrency boundary; do not dive into lock-free lists. |
+| "Now support TTL as well as LRU." | Extensibility and separation of policy. | Say TTL is a second eviction/expiry policy seam, not a rewrite of storage. Decide whether eviction is composed (`LruPolicy` + `ExpiryPolicy`) or one combined `EvictionPolicy`. |
+| "Can you walk through `get(k)`?" | Object collaboration and correctness. | Stop adding classes. Trace: lookup node in map, if missing return empty, otherwise move node to head and return value. Mention the state mutation. |
+
+The same base design can pass or fail depending on whether you hear the signal. A concurrency prompt wants the race and the protected invariant. An extensibility prompt wants the seam. A walk-through prompt wants behavior, not another abstraction.
+
+The senior move is to answer the axis they opened, then hand control back: "That covers the thread-safety story at the cache boundary; should I go deeper there or continue with TTL?"
+
+---
+
+## Further reading
+
+- [Design Patterns](https://refactoring.guru/design-patterns) — useful for recognizing when a follow-up is asking for Strategy, State, Observer, or Command.
+- [Martin Fowler bliki](https://martinfowler.com/bliki/) — vocabulary for naming design moves without turning the interview into a lecture.
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — helps translate interviewer nudges into responsibility and dependency questions.
+- *A Philosophy of Software Design* — John Ousterhout — reinforces listening for complexity and keeping interfaces narrow.
 
 ---
 

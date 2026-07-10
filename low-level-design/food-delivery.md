@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Food Delivery System (DoorDash / Swiggy-style)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~18 minutes"
+readingTime: "~24 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Food Delivery", "Order State Machine", "Strategy Pattern", "OOD"]
+topics: ["Low-Level Design", "Food Delivery", "Order State Machine", "Strategy Pattern", "Idempotency", "OOD"]
 ---
 
 # LLD Walkthrough: Design a Food Delivery System
@@ -307,6 +307,83 @@ Name and defer: batching, live GPS, ETA prediction, coupons, search/ranking, tip
 ## Minute 42-45: Wrap up
 > "The model has `Customer`, `Restaurant`, `MenuItem`, `Cart`, `Order`, `Payment`, `DeliveryAgent`, `OrderService`, and `DeliveryAssignmentStrategy`. `OrderService` owns checkout and transitions. The state machine prevents illegal moves like delivered-to-cancelled. Assignment is pluggable through Strategy, while actual agent reservation must be atomic. Edge cases like rejection, no agents, payment failure, and cancellation are all state transitions, not special-case chaos."
 That is a strong final snapshot.
+
+---
+
+## How real systems solve this
+
+Food delivery is a three-sided marketplace: customer demand, restaurant capacity, and courier supply all have to line up. The LLD version can model a single order, but production systems treat the order state machine as the source of truth: `placed -> confirmed -> preparing -> ready -> picked_up -> delivered`, with cancellation guarded by state.
+
+Assignment is closer to ride-hailing than to a simple round-robin. Systems first find geospatial courier candidates near the restaurant or route, then score them with ETA and availability. DoorDash-style dispatch can batch multiple nearby orders to one courier, which improves efficiency but makes assignment a short-horizon optimization problem instead of a one-order method call.
+
+Checkout has its own correctness boundary. Catalog and menu data are read to build the cart, but the order must snapshot item names, quantities, and prices at placement time. The placement API should accept an idempotency key so a client retry does not create two orders, and payment should authorize before restaurant work begins, then capture at the correct business point.
+
+The interview simplification can keep `DeliveryAssignmentStrategy` as nearest-agent. The production-ready shape is still visible: state transitions are guarded, payment transitions are explicit, and assignment can evolve from nearest courier to batched dispatch without rewriting `Order`.
+
+## Reference implementation
+
+The core mechanism below is a guarded order state machine. It keeps transition rules in one place, which is exactly what prevents accidental moves such as `delivered -> cancelled`.
+
+```java
+import java.util.*;
+
+final class OrderStateMachine {
+    enum State {
+        PLACED, CONFIRMED, PREPARING, READY,
+        PICKED_UP, DELIVERED, CANCELLED
+    }
+
+    private static final Map<State, Set<State>> ALLOWED = Map.of(
+        State.PLACED, Set.of(State.CONFIRMED, State.CANCELLED),
+        State.CONFIRMED, Set.of(State.PREPARING, State.CANCELLED),
+        State.PREPARING, Set.of(State.READY),
+        State.READY, Set.of(State.PICKED_UP),
+        State.PICKED_UP, Set.of(State.DELIVERED),
+        State.DELIVERED, Set.of(),
+        State.CANCELLED, Set.of()
+    );
+
+    private State state = State.PLACED;
+
+    State current() {
+        return state;
+    }
+
+    void transitionTo(State next) {
+        if (!ALLOWED.getOrDefault(state, Set.of()).contains(next)) {
+            throw new IllegalStateException("Cannot move order from " + state + " to " + next);
+        }
+        state = next;
+    }
+
+    boolean canCancel() {
+        return ALLOWED.getOrDefault(state, Set.of()).contains(State.CANCELLED);
+    }
+}
+```
+
+## Complexity and trade-offs
+
+| Operation | Typical cost | Notes |
+|---|---:|---|
+| Cart validation | `O(i)` | Validate `i` items against current menu and availability. |
+| Idempotent order placement | `O(1)` average | Lookup by idempotency key before creating the order. |
+| State transition | `O(1)` | Single adjacency check. |
+| Courier candidate search | `O(c + d)` | Depends on scanned cells and nearby couriers. |
+| Batched dispatch | polynomial or heuristic | Better utilization, but more complex than one-order assignment. |
+
+- Idempotency protects users from double orders, but the key store must be part of the transaction boundary.
+- Capturing menu snapshots preserves receipt history, but requires careful handling when prices change between cart and checkout.
+- Batched courier assignment can improve efficiency, but may delay an individual order while the batch forms.
+- A strict state machine blocks invalid operations, but policy changes must be reflected as explicit transitions.
+
+## Further reading
+
+- [Refactoring Guru: State](https://refactoring.guru/design-patterns/state) — modeling the order lifecycle as guarded state transitions.
+- [Refactoring Guru: Strategy](https://refactoring.guru/design-patterns/strategy) — assignment, cancellation, and pricing policies as replaceable strategies.
+- [Stripe: Designing robust and predictable APIs with idempotency](https://stripe.com/blog/idempotency) — retry-safe order placement concepts.
+- [Uber Engineering: H3](https://www.uber.com/blog/h3/) — relevant spatial-indexing background for courier candidate search.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — practical grounding for marketplace events, streams, and consistency boundaries.
 
 ---
 

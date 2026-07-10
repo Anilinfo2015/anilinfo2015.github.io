@@ -1,7 +1,7 @@
 ---
 title: "The 45-Minute LLD Framework: A Repeatable Way to Solve Any Low-Level Design Problem"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~18 minutes"
+readingTime: "~20 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Interview Framework", "OOD", "Time Management", "Communication"]
@@ -165,6 +165,44 @@ This leaves the interviewer with a clean mental snapshot to write in their notes
 1. **Rabbit-holing.** The scope fence (Stage 1) and the clock give you a reason to stop. When you feel the pull, say "I'll keep this simple and note it's swappable," and move.
 2. **Algorithm obsession.** LLD almost never needs a clever algorithm. If you catch yourself optimizing a data structure, downgrade it to the dumbest thing that works, hide it behind an interface, and return to object collaboration.
 3. **Misreading the ask.** Stage 1 forces the interviewer to tell you what they want. You are no longer guessing.
+
+---
+
+## A worked example
+
+Prompt: **"Design a parking lot."** Here is what the framework sounds like when you run it, not just describe it.
+
+**0–7 min — Clarify/scope.** "I'll cover park, unpark, ticket, and fare calculation for a single-process lot. I'll keep payment gateway, reservations, and persistence out. Vehicle size matters; EV charging is a stretch if time allows."
+
+**7–13 min — Entities.** Write six responsibilities: `ParkingLot` owns levels and capacity, `ParkingSpot` holds one vehicle, `Vehicle` carries plate/type, `Ticket` records spot and entry time, `FareStrategy` computes charge, `ParkingService` orchestrates the two flows. Stop there; no `Car extends Vehicle` debate.
+
+**13–20 min — API spine + seams.**
+
+```text
+Ticket parkVehicle(Vehicle vehicle) throws LotFull
+Receipt unparkVehicle(Ticket ticket)
+
+interface FareStrategy { Money calculate(Ticket ticket); }
+interface SpotAssignmentStrategy { Optional<ParkingSpot> assign(Vehicle vehicle); }
+```
+
+**20–33 min — Happy paths.** Walk `parkVehicle`: service asks the assignment strategy for a spot, claims it, issues a ticket, returns it. Then walk `unparkVehicle`: service validates the ticket, releases the spot, asks `FareStrategy` for the amount, returns a receipt.
+
+**33–42 min — Stretch/edges.** "Two cars racing for the last spot means the claim operation is the contended resource; I would protect it with a per-level lock or atomic spot claim. Weekend pricing is a new `FareStrategy`. EV charging is either a spot attribute or a new spot filter, depending on whether it changes behavior."
+
+**42–45 min — Wrap.** "The design has one orchestrator, small domain objects, and two variation seams: fare calculation and spot assignment. Next I would test lot-full, invalid ticket, and concurrent last-spot claims."
+
+That is enough. The point is not that this is the only parking-lot design; it is that every minute produced a scoreable artifact.
+
+---
+
+## Further reading
+
+- [Design Patterns](https://refactoring.guru/design-patterns) — useful catalog for naming seams like Strategy without over-explaining them.
+- [Refactoring](https://refactoring.guru/refactoring) — helps you recognize when an interview model is becoming bloated or coupled.
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — quick vocabulary for single responsibility, dependency inversion, and open/closed follow-ups.
+- *A Philosophy of Software Design* — John Ousterhout — reinforces the idea of narrow interfaces and deep modules.
+- *Effective Java* — Joshua Bloch — practical API-design instincts that translate well to LLD skeletons.
 
 ---
 

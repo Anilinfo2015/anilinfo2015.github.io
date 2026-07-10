@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design an In-Process Pub-Sub Message Queue"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~23 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Message Queue", "Observer Pattern", "Strategy Pattern", "Concurrency"]
+topics: ["Low-Level Design", "Message Queue", "Observer Pattern", "Strategy Pattern", "Concurrency", "Kafka"]
 ---
 
 # LLD Walkthrough: Design an In-Process Pub-Sub Message Queue
@@ -266,6 +266,85 @@ If there is one minute left, mention tests:
 ```
 
 Do not add more classes. End with the crisp model.
+
+---
+
+## How real systems solve this
+
+Kafka is the production reference point for the queue-shaped version of this prompt. A topic is split into partitions, and each partition is an ordered, immutable, append-only log. Every message in a partition gets a monotonic offset, and ordering is guaranteed only within that partition. Related messages use a key so they land on the same partition.
+
+Consumer groups add the scaling rule the interview design intentionally avoids: within one group, each partition is consumed by exactly one consumer, so parallelism is bounded by partition count. Default delivery is at-least-once when the consumer commits offsets after processing; if it crashes after processing but before commit, the message can be redelivered. Exactly-once requires idempotent producers and transactions.
+
+Durability and retention change the broker from callback fan-out into a replayable log. Kafka replication plus producer `acks` determine how strongly a write is acknowledged, while retention lets consumers rewind offsets and replay old messages. That decouples producer lifetime from consumer lifetime in a way an in-process, non-persistent broker cannot.
+
+Other systems choose different trade-offs. RabbitMQ emphasizes exchanges and bindings for broker-side routing. SQS uses visibility timeout semantics rather than consumer-owned offsets. All of them need poison-message handling with a dead-letter queue and some form of backpressure so slow consumers do not silently exhaust memory.
+
+## Reference implementation
+
+This Python core models the Kafka-like essentials: partitioned append-only logs, key-based partitioning, and per-consumer-group offsets.
+
+```python
+from __future__ import annotations
+
+from dataclasses import dataclass
+from threading import Lock
+from typing import Any
+
+@dataclass(frozen=True)
+class Record:
+    offset: int
+    key: str
+    value: Any
+
+class Topic:
+    def __init__(self, partitions: int) -> None:
+        if partitions <= 0:
+            raise ValueError("partitions must be positive")
+        self._logs: list[list[Record]] = [[] for _ in range(partitions)]
+        self._offsets: dict[tuple[str, int], int] = {}
+        self._lock = Lock()
+
+    def publish(self, key: str, value: Any) -> tuple[int, int]:
+        partition = hash(key) % len(self._logs)
+        with self._lock:
+            log = self._logs[partition]
+            record = Record(len(log), key, value)
+            log.append(record)
+            return partition, record.offset
+
+    def poll(self, group: str, partition: int, max_records: int) -> list[Record]:
+        with self._lock:
+            next_offset = self._offsets.get((group, partition), 0)
+            log = self._logs[partition]
+            return log[next_offset: next_offset + max_records]
+
+    def commit(self, group: str, partition: int, offset: int) -> None:
+        with self._lock:
+            current = self._offsets.get((group, partition), 0)
+            self._offsets[(group, partition)] = max(current, offset + 1)
+```
+
+## Complexity and trade-offs
+
+| Operation | Time | Space | Notes |
+|---|---:|---:|---|
+| Publish with key | O(1) average | O(1) per record | Hash key chooses partition; append assigns next offset. |
+| Poll batch | O(k) | O(k) returned | Reads k records from the group's committed offset. |
+| Commit offset | O(1) | O(1) per group-partition | Commit after processing gives at-least-once behavior. |
+| Fan-out to s subscribers | O(s) | O(s) references | In-process pub-sub copies/enqueues per subscriber. |
+| Replay from old offset | O(k) | O(k) returned | Requires retained records; not possible after deletion. |
+
+- More partitions increase consumer-group parallelism, but ordering remains only within each partition.
+- At-least-once delivery requires idempotent handlers because redelivery after a crash can duplicate work.
+- Retention decouples producers and consumers, but it turns memory/disk usage into a policy decision.
+- Backpressure must be explicit: block, drop, retry later, or route poison messages to a DLQ.
+
+## Further reading
+
+- [Apache Kafka documentation](https://kafka.apache.org/documentation/) — Authoritative reference for topics, partitions, offsets, consumer groups, replication, and transactions.
+- [Observer pattern](https://refactoring.guru/design-patterns/observer) — The in-process subscription model is a direct observer relationship.
+- [Strategy pattern](https://refactoring.guru/design-patterns/strategy) — Delivery, retry, and backpressure policies belong behind strategy interfaces.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — Broader context for logs, replication, partitions, and stream processing trade-offs.
 
 ---
 

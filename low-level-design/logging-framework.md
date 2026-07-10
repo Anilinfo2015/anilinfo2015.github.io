@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Logging Framework (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~23 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Logging Framework", "Strategy Pattern", "Composition", "OOD"]
+topics: ["Low-Level Design", "Logging Framework", "Strategy Pattern", "Composition", "OOD", "Observer Pattern"]
 ---
 
 # LLD Walkthrough: Design a Logging Framework
@@ -276,6 +276,89 @@ That is enough. Do not reimplement Log4j in the interview.
 > "The model is a composition chain: `LoggerFactory` returns named `Logger`s; a `Logger` checks `LogLevel`, creates immutable `LogRecord`s, runs filters, and sends records to multiple `Appender`s. Each appender owns a `Formatter`. Console, file, network, JSON, filters, async buffering, and rotation are all new implementations or wrappers. Thread safety is concentrated in appenders, especially file and async. Next I would add config loading and tests for level filtering, formatter output, and appender failure behavior."
 
 That is a complete logging framework answer without becoming a logging framework project.
+
+---
+
+## How real systems solve this
+
+Real Java applications commonly use a facade such as SLF4J with a backend such as Logback or Log4j2. That maps directly to the interview model: application code talks to a stable logger API, while appenders, layouts/encoders, filters, and configuration live behind it. The standard level ordering remains `TRACE < DEBUG < INFO < WARN < ERROR`.
+
+Production appenders are more than `println`: console, file, rolling file, and network destinations all need different failure and buffering behavior. Layouts or encoders turn a `LogRecord` into text or structured JSON. Structured logging matters because downstream systems can query fields such as logger name, level, timestamp, and request context instead of parsing a sentence.
+
+Async logging is a wrapper around the same appender idea. A bounded queue or ring buffer decouples application threads from I/O; Log4j2 async logging uses the LMAX Disruptor for very high throughput. The design pressure is still the same: records should be immutable, formatting should happen only after level checks, and appender failures should go to an internal error handler rather than crashing business code by default.
+
+Hierarchical loggers add production usability without changing `Logger.log`. A logger named `payments.checkout` can inherit level and appenders from `payments` or root, with additivity controlling propagation. MDC adds per-thread context such as `requestId`, which the record captures at log time so async appenders do not lose it.
+
+## Reference implementation
+
+The core mechanism is level filtering followed by immutable record creation and fan-out to pluggable appenders and formatters.
+
+```java
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+final class MiniLogger {
+    enum Level { TRACE, DEBUG, INFO, WARN, ERROR }
+
+    interface Formatter { String format(LogRecord record); }
+    interface Appender { void append(String line); }
+
+    record LogRecord(String logger, Level level, String message,
+                     Instant timestamp, Map<String, String> context) {}
+
+    private final String name;
+    private final Level minimumLevel;
+    private final Formatter formatter;
+    private final List<Appender> appenders;
+
+    MiniLogger(String name, Level minimumLevel, Formatter formatter, List<Appender> appenders) {
+        this.name = name;
+        this.minimumLevel = minimumLevel;
+        this.formatter = formatter;
+        this.appenders = List.copyOf(appenders);
+    }
+
+    boolean isEnabled(Level level) {
+        return level.ordinal() >= minimumLevel.ordinal();
+    }
+
+    void log(Level level, String message, Map<String, String> context) {
+        if (!isEnabled(level)) return;
+        LogRecord record = new LogRecord(name, level, message, Instant.now(), Map.copyOf(context));
+        String line = formatter.format(record);
+        for (Appender appender : appenders) {
+            try {
+                appender.append(line);
+            } catch (RuntimeException ignored) {
+                // Production code would route this to an internal status logger.
+            }
+        }
+    }
+}
+```
+
+## Complexity and trade-offs
+
+| Operation | Time | Space | Notes |
+|---|---:|---:|---|
+| Disabled log call | O(1) | O(1) | Level check returns before record creation and formatting. |
+| Enabled log call | O(a + f) | O(c + line) | `a` appenders, formatter cost `f`, context size `c`. |
+| Hierarchical config lookup | O(depth) | O(1) | Walk logger name parents to root if configs are not cached. |
+| Async append enqueue | O(1) | O(queue capacity) | Bounded buffer shifts I/O to worker thread. |
+| MDC capture | O(c) | O(c) | Copy context at record creation to keep async behavior correct. |
+
+- Synchronous appenders are simple but put I/O latency on the caller's critical path.
+- Async appenders reduce caller latency but require a bounded queue and an explicit overflow policy.
+- JSON formatting improves machine querying but usually costs more bytes and CPU than plain text.
+- Logger hierarchy is powerful, but additivity must be controlled to avoid duplicate writes.
+
+## Further reading
+
+- [Strategy pattern](https://refactoring.guru/design-patterns/strategy) — Formatter and appender implementations are interchangeable strategies.
+- [Observer pattern](https://refactoring.guru/design-patterns/observer) — Appenders behave like subscribers to emitted log records.
+- *Design Patterns* — Gamma, Helm, Johnson, Vlissides (GoF) — Original catalog for Strategy, Observer, and Chain of Responsibility vocabulary.
+- *Effective Java* — Joshua Bloch — Useful guidance for immutable value objects and defensive copies in APIs like `LogRecord`.
 
 ---
 

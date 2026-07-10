@@ -1,7 +1,7 @@
 ---
 title: "LLD Walkthrough: Design a Vending Machine (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~16 minutes"
+readingTime: "~21 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Vending Machine", "State Pattern", "Strategy Pattern", "OOD"]
@@ -237,6 +237,95 @@ One physical machine is naturally serialized. If you are designing a fleet, that
 > "Eight core pieces: `VendingMachine` delegates to a `MachineState`, `Inventory` owns slots, `Transaction` tracks the active purchase, and `ChangeMaker` is the Strategy seam. The happy path is select → insert money → make change → decrement inventory → dispense → idle. Legal actions are governed by the state, not scattered if-statements; failures like out-of-stock or cannot-make-change are rejected actions that keep the machine in a valid state."
 
 ---
+
+
+## How real systems solve this
+
+A vending machine is the canonical State pattern example for a reason. *Head First Design Patterns* uses a gumball machine to show the same idea: NoMoney, HasMoney, Dispensing, and SoldOut states each decide what `insertCoin`, `selectProduct`, and `dispense` mean. The object model becomes smaller because invalid actions live in the current state instead of in one giant `if` block.
+
+The hardware-facing parts should be seams. Coin and note handling, display updates, motor control, and refund mechanisms are adapters around the domain flow. The core machine should decide that a refund is due or a product should be dispensed; it should not know how a motor driver pulses a coil.
+
+Change-making is another explicit policy. Greedy works for canonical denominations, but arbitrary denomination sets need dynamic programming if you require optimal note/coin counts. In an interview, say that clearly and keep `ChangeMaker` replaceable rather than burying coin math in `VendingMachine`.
+
+Inventory must be checked before and during dispense. If the slot is empty, refund. If dispensing fails, refund and do not decrement inventory as a completed sale. The crisp model is: state validates the action, inventory records availability, change-making validates payment, and the machine transitions cleanly.
+
+## Reference implementation
+
+This snippet shows the core State pattern: the machine delegates actions to its current state, and each state owns the legal transitions.
+
+```java
+interface MachineState {
+    default void insertCoin(VendingMachine m, int cents) { throw new IllegalStateException(); }
+    default void select(VendingMachine m, String code) { throw new IllegalStateException(); }
+    default void dispense(VendingMachine m) { throw new IllegalStateException(); }
+}
+
+final class NoMoney implements MachineState {
+    public void insertCoin(VendingMachine m, int cents) {
+        m.addCredit(cents);
+        m.setState(new HasMoney());
+    }
+}
+
+final class HasMoney implements MachineState {
+    public void insertCoin(VendingMachine m, int cents) { m.addCredit(cents); }
+    public void select(VendingMachine m, String code) {
+        if (!m.hasStock(code) || m.credit() < m.price(code)) {
+            throw new IllegalStateException("cannot vend");
+        }
+        m.reserve(code);
+        m.setState(new Dispensing());
+    }
+}
+
+final class Dispensing implements MachineState {
+    public void dispense(VendingMachine m) {
+        m.releaseReservedItem();
+        m.returnChange();
+        m.setState(m.isSoldOut() ? new SoldOut() : new NoMoney());
+    }
+}
+
+final class SoldOut implements MachineState { }
+
+final class VendingMachine {
+    private MachineState state = new NoMoney();
+    private int credit;
+    void insertCoin(int cents) { state.insertCoin(this, cents); }
+    void select(String code) { state.select(this, code); }
+    void dispense() { state.dispense(this); }
+    void setState(MachineState next) { state = next; }
+    void addCredit(int cents) { credit += cents; }
+    int credit() { return credit; }
+    boolean hasStock(String code) { return true; }
+    int price(String code) { return 125; }
+    void reserve(String code) { credit -= price(code); }
+    void releaseReservedItem() { }
+    void returnChange() { credit = 0; }
+    boolean isSoldOut() { return false; }
+}
+```
+
+## Complexity and trade-offs
+
+| Concern | Choice | Cost | Why it is acceptable |
+|---|---|---:|---|
+| Action validation | State objects | More small classes | Removes illegal-transition conditionals from the machine. |
+| Change-making | Strategy seam | Policy call per vend | Supports greedy now, DP later for arbitrary denominations. |
+| Inventory | Slot-level quantity | `O(1)` lookup by code | Keeps product metadata separate from stock. |
+| Refunds | Explicit failure path | More transitions | Prevents lost money on stock or dispense failure. |
+
+- State pattern adds classes, but each class is tiny and maps to a user-visible mode.
+- Greedy change-making is fast for canonical denominations; dynamic programming is safer for arbitrary denominations.
+- Reserving before dispensing prevents another transaction from selling the last item concurrently.
+- The machine should store money as integer cents, not floating-point values.
+
+## Further reading
+
+- [State](https://refactoring.guru/design-patterns/state) — the central pattern for legal vending-machine transitions.
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — useful for change-making and payment policies.
+- *Head First Design Patterns* — Freeman & Robson — uses a gumball/vending-machine-style example for State.
+- *Design Patterns* — GoF — original State and Strategy pattern definitions.
 
 ## What separated a pass from a fail here
 

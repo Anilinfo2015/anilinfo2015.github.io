@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Rate Limiter (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~23 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Rate Limiter", "Strategy Pattern", "Concurrency", "API Design"]
+topics: ["Low-Level Design", "Rate Limiter", "Strategy Pattern", "Concurrency", "API Design", "Redis", "GCRA"]
 ---
 
 # LLD Walkthrough: Design a Rate Limiter
@@ -287,6 +287,92 @@ If you have ten extra seconds, say what you would test:
 - missing rule behavior.
 
 That is a senior ending: model, seam, invariant, concurrency, tests.
+
+---
+
+## How real systems solve this
+
+Production limiters usually keep the same shape as the interview design: a stable `allow/check` API, a policy, and a small piece of mutable state per key. The difference is where the state lives and how precise the algorithm must be. Token bucket stores only capacity, current tokens, and last-refill time, so it is the usual default when the product wants bursts up to `b` and O(1) per-key work.
+
+Fixed windows are attractive because they are trivial to store with `INCR` and expiry, but they can allow roughly a double burst around a boundary. Sliding-window logs are exact, but storing every request timestamp makes memory and CPU grow with request volume per key. Sliding-window counters split the difference by weighting the previous and current windows; Cloudflare describes using that style at edge scale where the state must stay small across millions of domains.
+
+Stripe's production write-up is a useful reminder that distributed rate limiting is mostly about atomicity and failure modes, not just math. Their design uses a GCRA/leaky-bucket variant and token buckets with Redis. In a web API, the denial path should return HTTP `429` and a `Retry-After` value computed from the same atomic state update.
+
+For a distributed version, keep the public API and strategy interface. Swap the in-memory `RateLimitStore` for Redis, and make the state transition a single atomic operation, commonly a Lua script or an equivalent `INCR`/`EXPIRE` pattern when the algorithm is simple enough. Server-side time matters because client clocks are not a safe source of truth.
+
+## Reference implementation
+
+The core mechanism is the atomic token-bucket transition: refill from elapsed time, then consume at most one token under the key's lock.
+
+```java
+import java.time.Clock;
+import java.util.concurrent.ConcurrentHashMap;
+
+final class TokenBucketLimiter {
+    private final int capacity;
+    private final double refillPerSecond;
+    private final Clock clock;
+    private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
+
+    TokenBucketLimiter(int capacity, double refillPerSecond, Clock clock) {
+        if (capacity <= 0 || refillPerSecond <= 0) throw new IllegalArgumentException();
+        this.capacity = capacity;
+        this.refillPerSecond = refillPerSecond;
+        this.clock = clock;
+    }
+
+    Decision check(String key) {
+        long nowMillis = clock.millis();
+        Bucket bucket = buckets.computeIfAbsent(key, k -> new Bucket(capacity, nowMillis));
+        synchronized (bucket) {
+            double elapsedSeconds = Math.max(0, nowMillis - bucket.lastRefillMillis) / 1000.0;
+            bucket.tokens = Math.min(capacity, bucket.tokens + elapsedSeconds * refillPerSecond);
+            bucket.lastRefillMillis = nowMillis;
+
+            if (bucket.tokens >= 1.0) {
+                bucket.tokens -= 1.0;
+                return new Decision(true, 0, (int) bucket.tokens);
+            }
+            long retryMillis = (long) Math.ceil((1.0 - bucket.tokens) / refillPerSecond * 1000.0);
+            return new Decision(false, retryMillis, 0);
+        }
+    }
+
+    private static final class Bucket {
+        double tokens;
+        long lastRefillMillis;
+        Bucket(double tokens, long lastRefillMillis) {
+            this.tokens = tokens;
+            this.lastRefillMillis = lastRefillMillis;
+        }
+    }
+
+    record Decision(boolean allowed, long retryAfterMillis, int remaining) {}
+}
+```
+
+## Complexity and trade-offs
+
+| Operation / strategy | Time | Space per key | Notes |
+|---|---:|---:|---|
+| Token bucket `check` | O(1) | O(1) | Stores token count and last-refill timestamp; allows bursts up to capacity. |
+| GCRA `check` | O(1) | O(1) | Stores one theoretical arrival time; compact and precise for a leaky-bucket style policy. |
+| Fixed-window counter | O(1) | O(1) | Simplest, but boundary bursts can be close to twice the intended limit. |
+| Sliding-window log | O(n) | O(n) | Exact, but stores every request timestamp for the window. |
+| Sliding-window counter | O(1) | O(1) | Low-memory weighted estimate with small edge error. |
+| Redis-backed update | O(1) network round trip | O(1) | Correctness depends on one atomic state transition. |
+
+- Token bucket is usually the best interview default: clear burst semantics, tiny state, and easy retry-after math.
+- Sliding-window log buys exactness at the cost of memory proportional to hot-key traffic.
+- Distributed limiters need atomic state and a consistent time source more than they need a larger object model.
+- A hot key still serializes on one state record; that is correct, but it can become the throughput ceiling.
+
+## Further reading
+
+- [Stripe: Scaling your API with rate limiters](https://stripe.com/blog/rate-limiters) — Practical discussion of GCRA/leaky-bucket variants, token buckets, and Redis-backed limiting.
+- [Cloudflare: Counting things, a lot of different things](https://blog.cloudflare.com/counting-things-a-lot-of-different-things/) — Edge-scale sliding-window counter motivation and trade-offs.
+- [Redis eviction policies](https://redis.io/docs/latest/develop/reference/eviction/) — Useful contrast for how Redis manages memory and expiry-adjacent policy decisions.
+- [Strategy pattern](https://refactoring.guru/design-patterns/strategy) — The exact seam used to swap limiter algorithms without changing callers.
 
 ---
 

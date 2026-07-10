@@ -1,7 +1,7 @@
 ---
 title: "Concurrency and Thread-Safety in LLD: Finding the One Contended Resource"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~13 minutes"
+readingTime: "~15 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Concurrency", "Thread Safety", "Locking"]
@@ -102,6 +102,50 @@ If your design takes more than one lock (transfer between two accounts, moving s
 - **Don't design a lock-free data structure live** unless explicitly asked. Name that it's possible, note the complexity, and use a lock.
 - **Don't confuse "thread-safe" with "correct."** A thread-safe map doesn't make a map+list pair consistent; the *pair* needs one lock. Protect invariants, not individual fields.
 - **Don't ignore the slow step inside a lock.** Holding a lock across I/O (payment, network) serializes the system. Claim-then-confirm exists precisely to avoid this.
+
+---
+
+## A worked example
+
+Suppose the interviewer asks, "In the parking lot, what if two cars take the last compact spot at the same time?" A proportionate answer is not "make the whole lot synchronized." Name the one shared mutable resource: **the spot's occupied flag**. The invariant is: one spot can transition from free to occupied exactly once per successful claim.
+
+For a single spot, an atomic compare-and-set is enough:
+
+```java
+import java.util.concurrent.atomic.AtomicBoolean;
+
+final class ParkingSpot {
+    private final String id;
+    private final AtomicBoolean occupied = new AtomicBoolean(false);
+
+    ParkingSpot(String id) {
+        this.id = id;
+    }
+
+    boolean tryClaim() {
+        return occupied.compareAndSet(false, true);
+    }
+
+    void release() {
+        occupied.set(false); // idempotent enough for an interview-level spot release
+    }
+
+    String id() {
+        return id;
+    }
+}
+```
+
+Say it like this: "The race is only on the spot claim. `tryClaim()` atomically checks and flips the flag, so exactly one caller succeeds; the service can scan candidate spots and stop at the first successful claim. If a global scan lock becomes hot, I would shard by level or keep spots in concurrent per-type collections, but I would not serialize every lot operation behind one lock."
+
+For an LRU cache, the answer changes: the contended resource is not one field; it is the **map + linked-list invariant**. A `ConcurrentHashMap` alone is insufficient because the list and map must update together. Use one narrow lock around "put/get and move node," or stripe by key if the interviewer pushes on throughput.
+
+## Further reading
+
+- [Java Concurrency Tutorial](https://docs.oracle.com/javase/tutorial/essential/concurrency/) — grounding for locks, atomicity, guarded blocks, and safe thread coordination.
+- [java.util.concurrent](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/package-summary.html) — production-grade primitives to prefer over hand-rolled locking in Java designs.
+- *Java Concurrency in Practice* — Brian Goetz — deeper treatment of invariants, safe publication, and designing thread-safe classes.
+- *Effective Java* — Joshua Bloch — practical guidance on minimizing mutability and using library concurrency utilities well.
 
 ---
 
