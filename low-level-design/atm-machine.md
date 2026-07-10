@@ -1,7 +1,7 @@
 ---
 title: "LLD Walkthrough: Design an ATM Machine (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "ATM Machine", "State Pattern", "Strategy Pattern", "Concurrency", "OOD"]
@@ -238,6 +238,81 @@ Three lines. Enough.
 > "Nine objects: `ATM` owns the session and state, `BankService` handles authentication and account authorization, and `CashDispenser` owns note selection and cassette inventory. The withdrawal flow is card → PIN → select withdrawal → reserve funds → dispense cash → capture → eject. The big seams are State for session transitions and Strategy for note selection. Account concurrency is handled by the bank; local cash concurrency is handled by the dispenser lock."
 
 ---
+
+
+## How real systems solve this
+
+The ATM session is a state machine. CardInserted, PinEntered, OptionSelected, Transaction, and EjectCard states constrain what actions are valid. That is not just a neat pattern; it is how the design prevents dispensing cash before authentication or accepting a withdrawal amount after the card is already ejected.
+
+Real ATMs also have hard integration boundaries. EMV chip authentication happens at the card/device layer. PIN handling is encrypted end-to-end and verified through an HSM, not by storing or comparing PINs in the ATM application. Bank network messages commonly use ISO 8583, so the `BankService` seam should represent authorization and settlement messages rather than a local account object.
+
+Withdrawal is not a single local method call. A practical flow authorizes or holds funds, dispenses cash if authorization succeeds, and later settles. Because networks time out and retries happen, operations need idempotency: the same transaction id should not debit twice or dispense twice when a client retries after an ambiguous response.
+
+Cash dispensing is a constrained change-making problem with local inventory. The ATM must pick denominations from cassette counts, enforce daily limits through bank authorization, and fail safely when the requested amount cannot be formed from available notes.
+
+## Reference implementation
+
+This focused Python snippet implements the denomination planner. It uses a greedy pass over available cassettes and only commits inventory after a complete plan exists.
+
+```python
+from dataclasses import dataclass
+
+
+class DispenseError(Exception):
+    pass
+
+
+@dataclass
+class CashDispenser:
+    cassettes: dict[int, int]  # denomination -> available note count
+
+    def plan(self, amount: int) -> dict[int, int]:
+        remaining = amount
+        plan: dict[int, int] = {}
+
+        for denom in sorted(self.cassettes, reverse=True):
+            if remaining == 0:
+                break
+            usable = min(remaining // denom, self.cassettes[denom])
+            if usable:
+                plan[denom] = usable
+                remaining -= denom * usable
+
+        if remaining != 0:
+            raise DispenseError("amount cannot be formed from available notes")
+        return plan
+
+    def dispense(self, amount: int) -> dict[int, int]:
+        plan = self.plan(amount)
+        for denom, count in plan.items():
+            self.cassettes[denom] -= count
+        return plan
+
+
+dispenser = CashDispenser({100: 4, 50: 10, 20: 10})
+notes = dispenser.dispense(280)  # {100: 2, 50: 1, 20: 1}
+```
+
+## Complexity and trade-offs
+
+| Concern | Choice | Cost | Why it is acceptable |
+|---|---|---:|---|
+| Session flow | State machine | More explicit states | Prevents invalid ATM actions. |
+| Bank integration | `BankService` seam | Remote dependency | Keeps ledger and ISO 8583 messaging out of the ATM core. |
+| Cash planning | Greedy by denomination | `O(d log d)` | Fast for normal cassette denomination sets. |
+| Retry safety | Idempotent transaction id | Extra state tracking | Avoids duplicate debit or duplicate dispense after timeout. |
+
+- Greedy dispensing is simple, but arbitrary denominations may need a stronger change-making algorithm.
+- Authorization should happen before dispense; settlement can be separated so failures are recoverable.
+- The ATM owns local cash inventory, but the bank owns account balance and daily-limit decisions.
+- PIN and EMV details belong behind secure device/HSM interfaces, not in domain classes.
+
+## Further reading
+
+- [State](https://refactoring.guru/design-patterns/state) — maps directly to ATM session flow.
+- [ISO 8583](https://en.wikipedia.org/wiki/ISO_8583) — background on financial transaction messaging used around ATM networks.
+- *Effective Java* — Joshua Bloch — useful for designing small, safe interfaces around security-sensitive flows.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — relevant for idempotency, retries, and consistency around distributed transactions.
 
 ## What separated a pass from a fail here
 

@@ -1,7 +1,7 @@
 ---
 title: "LLD Walkthrough: Design a Meeting Scheduler / Calendar"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Calendar", "Scheduling", "Interval Overlap", "Concurrency"]
@@ -286,6 +286,90 @@ Close with:
 That is the clean summary.
 
 ---
+
+
+## How real systems solve this
+
+The core algorithm is still interval overlap. Calendars expose busy intervals; the scheduler sorts them by start time, merges overlaps, and scans for a gap large enough for the meeting. For heavier query workloads, an interval tree can accelerate conflict checks, but the interview version should start with the sweep because it is correct and easy to explain.
+
+Free/busy across attendees is just merging more intervals. Add the room's reservations as another busy calendar, merge everything, and then find open gaps inside the search window. Preventing double-booking is a write-time conflict check: before inserting the meeting or room reservation, verify that the target interval does not overlap an existing reservation.
+
+Recurring events are where real calendars become tricky. RFC 5545 defines RRULE fields such as FREQ, INTERVAL, BYDAY, UNTIL, and COUNT. A production system stores the recurrence rule, expands it into instances for the query window, and applies exceptions such as EXDATE before doing overlap checks.
+
+Time zones should be explicit. Store instants in UTC for comparison, and keep the IANA time-zone id for display and recurrence expansion so daylight-saving transitions are handled consistently. That is the difference between a demo scheduler and something that behaves like Google Calendar or Outlook.
+
+## Reference implementation
+
+This Python snippet finds the first common free slot by merging busy intervals. It uses half-open intervals `[start, end)` so back-to-back meetings do not conflict.
+
+```python
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+
+@dataclass(frozen=True, order=True)
+class Slot:
+    start: datetime
+    end: datetime
+
+    def overlaps(self, other: "Slot") -> bool:
+        return self.start < other.end and other.start < self.end
+
+
+def merge_busy(intervals: list[Slot]) -> list[Slot]:
+    merged: list[Slot] = []
+    for slot in sorted(intervals):
+        if not merged or merged[-1].end <= slot.start:
+            merged.append(slot)
+        else:
+            last = merged[-1]
+            merged[-1] = Slot(last.start, max(last.end, slot.end))
+    return merged
+
+
+def first_free_slot(
+    busy_by_calendar: list[list[Slot]],
+    window: Slot,
+    duration: timedelta,
+) -> Slot | None:
+    busy = [slot for calendar in busy_by_calendar for slot in calendar]
+    clipped = [
+        Slot(max(slot.start, window.start), min(slot.end, window.end))
+        for slot in busy
+        if slot.overlaps(window)
+    ]
+
+    cursor = window.start
+    for slot in merge_busy(clipped):
+        if slot.start - cursor >= duration:
+            return Slot(cursor, cursor + duration)
+        cursor = max(cursor, slot.end)
+
+    if window.end - cursor >= duration:
+        return Slot(cursor, cursor + duration)
+    return None
+```
+
+## Complexity and trade-offs
+
+| Concern | Choice | Cost | Why it is acceptable |
+|---|---|---:|---|
+| Conflict detection | Sort + sweep | `O(n log n)` | Simple and correct for interview-scale free/busy. |
+| Repeated queries | Interval tree | More complex writes | Useful when calendars are large and queried often. |
+| Recurrence | RFC 5545 RRULE seam | Expansion cost | Keeps recurring logic separate from one-off event storage. |
+| Time zones | UTC instant + IANA zone id | Extra field | Correct comparisons plus correct user-facing recurrence behavior. |
+
+- Half-open intervals avoid false conflicts between a meeting ending at 10:00 and another starting at 10:00.
+- Expanding recurrence only inside the query window prevents unbounded event generation.
+- Room booking should be checked transactionally; availability shown to users can become stale.
+- Interval trees help reads, but sorted sweeps are easier to implement and debug first.
+
+## Further reading
+
+- [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545) — defines iCalendar recurrence rules and exception concepts.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — useful background for consistency, concurrency, and distributed calendar writes.
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — useful for swapping availability and room-selection policies.
+- *Effective Java* — Joshua Bloch — relevant to immutable value objects such as time slots.
 
 ## What separated a pass from a fail here
 - You did not turn the problem into Google Calendar HLD.

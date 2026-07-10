@@ -1,7 +1,7 @@
 ---
 title: "LLD Walkthrough: Design a Parking Lot (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~16 minutes"
+readingTime: "~21 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Parking Lot", "Strategy Pattern", "Concurrency", "OOD"]
@@ -150,6 +150,91 @@ stateDiagram-v2
 > "Seven objects, `ParkingService` orchestrates, variation lives behind `FareStrategy` and `SpotAssignment`, and the one concurrency point is spot assignment, guarded per level. Extensions like EV spots or weekend pricing are new strategy classes, not rewrites. Next I'd add persistence for tickets and a real payment step."
 
 ---
+
+
+## How real systems solve this
+
+Production parking systems are not just a `List<Spot>`. They have entry and exit gates, ground sensors or loop detectors, ANPR cameras for plate capture, dynamic signage, and a payment-gateway seam. The LLD still starts with the same ticket and spot model, but real devices become adapters around the core service instead of being mixed into `ParkingSpot`.
+
+Availability is usually centralized. Each level can maintain occupancy counters, while a central availability service aggregates counts for signs, mobile views, and gate decisions. In a multi-level or multi-lot design, the in-memory map becomes a distributed availability store; the design pressure shifts from class modeling to consistency and stale-availability handling.
+
+The two policies that should remain replaceable are fare calculation and spot assignment. A mall, airport, office garage, and event venue can all use the same `ParkingService` while swapping `FareStrategy` and `SpotAssignmentStrategy`. That is the Strategy pattern doing useful work, not pattern theater.
+
+The concurrency bug to call out is double assignment. Two gates can see the same free spot unless assignment is atomic. A per-level lock is easy to explain; a compare-and-set flag on each spot is tighter and scales better when many entries scan the same level.
+
+## Reference implementation
+
+The core mechanism is atomic spot claiming. The service may scan many candidates, but a spot becomes occupied only through one successful compare-and-set.
+
+```java
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+enum SpotSize { SMALL, MEDIUM, LARGE }
+
+final class ParkingSpot {
+    private final String id;
+    private final SpotSize size;
+    private final AtomicBoolean occupied = new AtomicBoolean(false);
+
+    ParkingSpot(String id, SpotSize size) {
+        this.id = id;
+        this.size = size;
+    }
+
+    boolean canFit(SpotSize required) {
+        return size.ordinal() >= required.ordinal();
+    }
+
+    boolean tryOccupy() {
+        return occupied.compareAndSet(false, true);
+    }
+
+    void release() {
+        occupied.set(false);
+    }
+
+    String id() { return id; }
+}
+
+final class Level {
+    private final List<ParkingSpot> spots;
+
+    Level(List<ParkingSpot> spots) {
+        this.spots = List.copyOf(spots);
+    }
+
+    Optional<ParkingSpot> assignSpot(SpotSize required) {
+        for (ParkingSpot spot : spots) {
+            if (spot.canFit(required) && spot.tryOccupy()) {
+                return Optional.of(spot);
+            }
+        }
+        return Optional.empty();
+    }
+}
+```
+
+## Complexity and trade-offs
+
+| Concern | Choice | Cost | Why it is acceptable |
+|---|---|---:|---|
+| Spot search | Linear scan per level | `O(spots)` | Simple, deterministic, good for interview scope. |
+| Atomic claim | CAS per candidate | `O(1)` | Prevents duplicate assignment without coarse global locking. |
+| Availability | Per-level counters + central service | Extra synchronization | Enables signs, gates, and multi-level visibility. |
+| Pricing | `FareStrategy` | One interface | Keeps business rules out of parking flow. |
+
+- CAS avoids a global lock, but it can scan more failed candidates under heavy contention.
+- A per-level lock is easier to reason about; CAS is better when many gates assign independently.
+- Central availability may be slightly stale in a distributed lot, so the final spot claim must still be authoritative.
+- Dynamic signage should display availability hints, not become the source of truth.
+
+## Further reading
+
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — useful for fare calculation and spot-assignment policies.
+- [Factory Method](https://refactoring.guru/design-patterns/factory-method) — relevant when creating tickets, receipts, or gateway adapters without binding callers to concrete classes.
+- *Effective Java* — Joshua Bloch — practical guidance for immutability, concurrency, and small interfaces.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — useful background for distributed availability and consistency trade-offs.
 
 ## What separated a pass from a fail here
 

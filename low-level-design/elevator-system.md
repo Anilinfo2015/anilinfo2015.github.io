@@ -1,7 +1,7 @@
 ---
 title: "LLD Walkthrough: Design an Elevator System (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Elevator System", "Strategy Pattern", "State Pattern", "Concurrency", "OOD"]
@@ -229,6 +229,86 @@ Name deferred edges quickly: invalid floor, stuck car, power outage, emergency s
 > "Eight core pieces: `ElevatorSystem` is the facade, `Dispatcher` assigns hall calls using a `SchedulingStrategy`, and each `Elevator` owns its stop sets, movement, door, and state machine. The happy path is hall call → assignment → pickup → destination → movement. Concurrency is guarded around assignment and stop mutation. If I had more time, I would add persistence/telemetry and richer emergency modes."
 
 ---
+
+
+## How real systems solve this
+
+The classic scheduling baseline is the elevator algorithm: keep moving in one direction, serve stops on the way, and reverse only when there is nothing useful left in that direction. In code, this is usually a LOOK-style policy over ordered sets rather than a brute-force list. One set tracks upward stops, another tracks downward stops, and the car asks for the next stop based on current direction.
+
+That does not make scheduling the whole design. Each car is still a state machine: idle, moving up, moving down, and doors open. The dispatcher chooses a car; the car's local scheduler decides the next stop; the door and safety logic constrain transitions. Keeping those responsibilities separate is what lets you change dispatch policy without rewriting car movement.
+
+Modern buildings often go further with destination dispatch. Instead of pressing only up or down, the passenger enters a destination at a kiosk; systems such as Otis Compass and Schindler PORT can group passengers by destination and assign a car. The LLD seam is the same: multi-car dispatch optimizes assignment across cars, while each car remains a stateful executor of stops.
+
+A strong interview answer names both levels: SCAN/LOOK is a reasonable per-car scheduling policy, and destination dispatch is a real-world extension at the dispatcher layer. That shows practical grounding without trying to solve optimal elevator control on a whiteboard.
+
+## Reference implementation
+
+This focused Java snippet shows LOOK scheduling for one car. Ordered sets let the car pick the nearest stop in the current direction, then reverse when no such stop remains.
+
+```java
+import java.util.*;
+
+enum Direction { UP, DOWN }
+
+final class LookScheduler {
+    private final NavigableSet<Integer> upStops = new TreeSet<>();
+    private final NavigableSet<Integer> downStops = new TreeSet<>();
+
+    void addStop(int currentFloor, int destinationFloor) {
+        if (destinationFloor >= currentFloor) {
+            upStops.add(destinationFloor);
+        } else {
+            downStops.add(destinationFloor);
+        }
+    }
+
+    OptionalInt nextStop(int currentFloor, Direction direction) {
+        Integer next = switch (direction) {
+            case UP -> upStops.ceiling(currentFloor);
+            case DOWN -> downStops.floor(currentFloor);
+        };
+
+        if (next == null) {
+            next = switch (direction) {
+                case UP -> downStops.floor(currentFloor);
+                case DOWN -> upStops.ceiling(currentFloor);
+            };
+        }
+
+        if (next == null) {
+            return OptionalInt.empty();
+        }
+        upStops.remove(next);
+        downStops.remove(next);
+        return OptionalInt.of(next);
+    }
+
+    boolean isIdle() {
+        return upStops.isEmpty() && downStops.isEmpty();
+    }
+}
+```
+
+## Complexity and trade-offs
+
+| Concern | Choice | Cost | Why it is acceptable |
+|---|---|---:|---|
+| Add stop | `TreeSet` insert | `O(log n)` | Keeps stops ordered for nearest-in-direction lookup. |
+| Next stop | `ceiling` / `floor` | `O(log n)` | Implements LOOK cleanly without scanning all requests. |
+| Per-car state | Explicit enum/state machine | Small transition table | Prevents illegal movement and door states. |
+| Multi-car dispatch | Strategy seam | Policy complexity | Lets nearest-car and destination-dispatch coexist. |
+
+- LOOK is predictable and starvation-resistant for a single car, but not globally optimal across cars.
+- Destination dispatch can reduce wait/travel time, but requires passengers to declare destinations before boarding.
+- Ordered sets are simpler than heaps here because the scheduler needs both nearest-above and nearest-below queries.
+- The dispatcher should not open doors or mutate car internals; it assigns work, then the car state machine executes it.
+
+## Further reading
+
+- [Elevator algorithm](https://en.wikipedia.org/wiki/Elevator_algorithm) — background on SCAN/LOOK-style scheduling.
+- [State](https://refactoring.guru/design-patterns/state) — maps directly to idle, moving, and doors-open car behavior.
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — useful for swapping nearest-car, SCAN/LOOK, and destination-dispatch policies.
+- *Design Patterns* — GoF — original pattern vocabulary for Strategy and State.
 
 ## What separated a pass from a fail here
 
