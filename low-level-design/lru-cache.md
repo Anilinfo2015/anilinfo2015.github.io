@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design an LRU Cache (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "LRU Cache", "Eviction Policy", "Strategy Pattern", "Data Structures"]
+topics: ["Low-Level Design", "LRU Cache", "Eviction Policy", "Strategy Pattern", "Data Structures", "Redis", "Caffeine"]
 ---
 
 # LLD Walkthrough: Design an LRU Cache
@@ -302,6 +302,84 @@ If you have time, name the tests:
 - capacity zero stores nothing.
 
 That is enough to show both correctness and judgment.
+
+---
+
+## How real systems solve this
+
+The interview LRU is the clean textbook structure: a hashmap for lookup plus a doubly linked list for recency. That gives O(1) `get`, `put`, move-to-front, and tail eviction as long as the map and list mutate under the same invariant. Java's `LinkedHashMap` already packages that mechanism with `accessOrder=true` and `removeEldestEntry`.
+
+Production caches usually do not stop at plain LRU. Workloads often have scans, one-hit wonders, and mixed hot/cold traffic that can pollute a pure recency list. Libraries such as Guava Cache and Caffeine add richer admission and eviction behavior; Caffeine's Window TinyLFU admission policy is designed to improve hit ratio over plain LRU on many real access patterns.
+
+Redis is another useful reality check: it does not implement exact LRU for all keys. Its LRU policy is approximate, using random sampling controlled by `maxmemory-samples` with a default of 5 and a compact per-object LRU clock. Redis also offers LFU policies with an 8-bit logarithmic counter, probabilistic increment, and time decay. That is a deliberate production trade-off: less metadata and CPU for a good-enough victim choice.
+
+The interview design should still start with true LRU because it proves the core invariant. The production discussion is that exactness, memory overhead, hit ratio, and latency are all knobs. `EvictionPolicy` is the seam that lets the cache move from LRU to LFU, random, TTL-aware, or Window TinyLFU-style admission without changing `Cache<K,V>`.
+
+## Reference implementation
+
+Java's `LinkedHashMap` can express the core LRU mechanism directly: access-order iteration plus an eldest-entry hook.
+
+```java
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+
+final class LruCache<K, V> {
+    private final int capacity;
+    private final LinkedHashMap<K, V> map;
+
+    LruCache(int capacity) {
+        if (capacity < 0) throw new IllegalArgumentException("capacity must be non-negative");
+        this.capacity = capacity;
+        this.map = new LinkedHashMap<K, V>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+                return size() > LruCache.this.capacity;
+            }
+        };
+    }
+
+    public synchronized Optional<V> get(K key) {
+        return Optional.ofNullable(map.get(key)); // accessOrder moves a hit to most-recent
+    }
+
+    public synchronized void put(K key, V value) {
+        if (capacity == 0) return;
+        map.put(key, value);
+    }
+
+    public synchronized boolean delete(K key) {
+        return map.remove(key) != null;
+    }
+
+    public synchronized int size() {
+        return map.size();
+    }
+}
+```
+
+## Complexity and trade-offs
+
+| Operation | Time | Space | Notes |
+|---|---:|---:|---|
+| `get` hit | O(1) | O(1) extra | Hash lookup plus move-to-most-recent. |
+| `get` miss | O(1) | O(1) | No policy update unless negative caching is added. |
+| `put` existing | O(1) | O(1) extra | Replace value and mark recently used. |
+| `put` new under capacity | O(1) | O(1) extra | Add map entry and recency node. |
+| `put` new over capacity | O(1) | O(1) extra | Evict tail / eldest entry. |
+| `delete` | O(1) | O(1) | Remove from both storage and policy. |
+
+- Exact LRU is simple and deterministic, but it can be polluted by scans that touch many cold keys once.
+- Approximate policies, like Redis sampling, trade perfect victim selection for lower metadata and CPU overhead.
+- Admission policies, such as Caffeine's Window TinyLFU, can beat plain LRU hit ratio by rejecting low-value entries.
+- One lock around the map and policy is the safe first cut; sharding improves throughput while preserving per-shard invariants.
+
+## Further reading
+
+- [Redis eviction policies](https://redis.io/docs/latest/develop/reference/eviction/) — Documents Redis approximate LRU, LFU counters, and configurable maxmemory policies.
+- [Caffeine cache](https://github.com/ben-manes/caffeine) — Production Java cache using Window TinyLFU admission to improve hit ratios.
+- [Strategy pattern](https://refactoring.guru/design-patterns/strategy) — The policy seam used for LRU, LFU, FIFO, and random eviction variants.
+- *Effective Java* — Joshua Bloch — Useful for Java API design choices around generics, immutability, and collection wrappers.
 
 ---
 
