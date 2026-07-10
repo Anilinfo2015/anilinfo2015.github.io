@@ -46,7 +46,7 @@ Prefer composition. A `Product` does not need subclasses for `Chips`, `Soda`, an
 | `Money` | Represents inserted amount and denomination counts. |
 | `Transaction` | Tracks selected slot, inserted money, and result. |
 | `ChangeMaker` | Computes change from available denominations. |
-| `MachineState` | State interface/enum for Idle, ItemSelected, HasMoney, Dispensing, OutOfStock. |
+| `MachineState` | State interface/enum for Idle, ItemSelected, HasMoney, Dispensing. |
 
 Eight objects. That is plenty.
 
@@ -104,7 +104,7 @@ interface ChangeMaker {
 }
 ```
 
-- `MachineState` → **State pattern**. `Idle`, `ItemSelected`, `HasMoney`, `Dispensing`, `OutOfStock` decide legal transitions.
+- `MachineState` → **State pattern**. `Idle`, `ItemSelected`, `HasMoney`, and `Dispensing` decide legal transitions. (Out-of-stock is not a state — it is a *rejected action* that shows "Sold out" and leaves you in `Idle`.)
 - `ChangeMaker` → **Strategy pattern**. Greedy coin return today; dynamic-programming or denomination-specific rules later.
 
 The API is intentionally boring. That is good. Boring APIs are testable.
@@ -132,7 +132,9 @@ sequenceDiagram
     VM->>I: reserve("B2")
     VM->>T: start(slot)
     C->>VM: insertMoney($2)
-    VM->>CM: makeChange($2, $1.50, float)
+    C->>VM: dispense()
+    VM->>CM: makeChange($2, $1.50)
+    VM->>I: decrement("B2")
     VM-->>C: product + $0.50
 ```
 
@@ -144,7 +146,7 @@ selectItem(slotCode):
 
 Idle.selectItem(vm, slotCode):
   slot = inventory.get(slotCode)
-  if slot.isEmpty(): transition OutOfStock; return "Sold out"
+  if slot.isEmpty(): return "Sold out"   // rejected action, stay in Idle
   transaction = Transaction.forSlot(slot)
   transition ItemSelected
   return "Price: 1.50"
@@ -180,12 +182,11 @@ The lifecycle is the main artifact:
 stateDiagram-v2
     [*] --> Idle
     Idle --> ItemSelected: selectItem()
-    Idle --> OutOfStock: select empty slot
+    Idle --> Idle: select empty slot (Sold out)
     ItemSelected --> HasMoney: enough money
     ItemSelected --> Idle: refund()
     HasMoney --> Dispensing: dispense()
     Dispensing --> Idle: product released
-    OutOfStock --> Idle: choose another
 ```
 
 Say the quiet parts:
@@ -233,7 +234,7 @@ One physical machine is naturally serialized. If you are designing a fleet, that
 
 ## Minute 42-45: Wrap up
 
-> "Eight core pieces: `VendingMachine` delegates to a `MachineState`, `Inventory` owns slots, `Transaction` tracks the active purchase, and `ChangeMaker` is the Strategy seam. The happy path is select → insert money → make change → decrement inventory → dispense → idle. Edges like out-of-stock and cannot-make-change are state transitions, not scattered if-statements."
+> "Eight core pieces: `VendingMachine` delegates to a `MachineState`, `Inventory` owns slots, `Transaction` tracks the active purchase, and `ChangeMaker` is the Strategy seam. The happy path is select → insert money → make change → decrement inventory → dispense → idle. Legal actions are governed by the state, not scattered if-statements; failures like out-of-stock or cannot-make-change are rejected actions that keep the machine in a valid state."
 
 ---
 

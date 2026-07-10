@@ -99,7 +99,7 @@ interface Command {
   void execute()
   void undo()
   boolean canMergeWith(Command next)
-  Command merge(Command next)
+  Command mergeWith(Command next)   // combine undo metadata of two applied edits
 }
 ```
 
@@ -182,25 +182,27 @@ The apply flow:
 
 ```text
 CommandHistory.apply(command):
-  if undoStack.peek().canMergeWith(command):
-    merged = undoStack.pop().merge(command)
-    undoStack.push(merged)
-  else:
-    command.execute()
-    undoStack.push(command)
-  redoStack.clear()
+  command.execute()          // always execute first
+  undoStack.push(command)
+  redoStack.clear()          // a new edit invalidates redo
 ```
 
-In a first cut, you can skip merging and say it comes in stretch. If you include it, be careful: the new command must execute before merging or the merged command must represent both already-applied edits.
+That is the whole core: execute, record for undo, and clear redo because branching history is out of scope. Keep *this* as your live answer.
 
-The simpler live version is:
+Coalescing (merging rapid keystrokes into one undo unit) is an optimization for the stretch phase. Show it only if asked, and get the ordering right — execute the new command first, then merge, and guard the empty stack:
 
 ```text
 apply(command):
   command.execute()
-  undoStack.push(command)
+  if not undoStack.isEmpty() and undoStack.peek().canMergeWith(command):
+    merged = undoStack.pop().mergeWith(command)   // both edits already applied
+    undoStack.push(merged)
+  else:
+    undoStack.push(command)
   redoStack.clear()
 ```
+
+The subtlety to say out loud: both edits are already applied to the buffer by the time you merge, so `mergeWith` only combines their *undo* metadata (e.g., a single range to delete) — it must not re-apply anything.
 
 Undo/redo:
 

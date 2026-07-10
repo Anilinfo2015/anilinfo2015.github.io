@@ -54,6 +54,10 @@ If you look up and it's minute 35 with no working flow, don't panic-code. Say: "
 
 ## Part 2: Thinking aloud — make your reasoning scoreable
 
+### A note on the "say this out loud" scripts in this playbook
+
+Throughout these articles you'll see example lines to say. Treat them as **the intent and shape of a good sentence, not a script to memorize**. Reciting a polished monologue verbatim sounds robotic and, worse, brittle — the moment the interviewer interrupts, a memorized speech collapses. Internalize the *pattern* ("decision + because + trade-off," "here's the seam, here's the delta") and say it in your own words, differently each time. A staff-level candidate sounds like they're thinking, not performing. If a suggested line doesn't sound like you, rephrase it until it does.
+
 ### The interviewer scores what you *say*, not what you think
 
 This is the mental shift: your silent brilliance is invisible. If you consider three options and pick one without a word, the interviewer sees only "he wrote a class." Narrate the *decision*: "I could model vehicle types as subclasses or as an enum; subclasses only differ in size here, so I'll use an enum and save the hierarchy for real behavior differences." Now they see judgment, trade-off awareness, and restraint — three checkmarks — from one sentence.

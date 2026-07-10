@@ -97,7 +97,8 @@ Now the varying interfaces:
 
 ```text
 interface MatchingStrategy {
-  Optional<Driver> findDriver(Location pickup, List<Driver> candidates)
+  // Returns candidates in preference order; caller claims the first that succeeds.
+  List<Driver> rankDrivers(Location pickup, List<Driver> candidates)
 }
 
 interface PricingStrategy {
@@ -156,7 +157,7 @@ sequenceDiagram
     participant T as Trip
     R->>RS: requestRide(pickup, dropoff)
     RS->>DM: nearbyAvailable(pickup)
-    RS->>MS: findDriver(pickup, candidates)
+    RS->>MS: rankDrivers(pickup, candidates)
     MS-->>RS: driver
     RS->>DM: tryClaim(driver, tripId)
     RS->>T: assignDriver(driver)
@@ -179,7 +180,7 @@ requestRide(rider, pickup, dropoff):
   trip.setEstimate(fareEstimate)
 
   candidates = driverManager.nearbyAvailable(pickup)
-  for driver in matching.rank(pickup, candidates):
+  for driver in matching.rankDrivers(pickup, candidates):
     if driverManager.tryClaim(driver.id, trip.id):
       trip.assignDriver(driver.id)
       store.save(trip)

@@ -21,29 +21,29 @@ Half of concurrency questions evaporate if you clarified scope. If you establish
 
 ---
 
-## The core skill: locate the one contended resource
+## The core skill: find the invariant(s) under contention
 
-In almost every LLD problem there is exactly **one** place where concurrent access corrupts state. Your whole job is to find it and protect just that. Train yourself to scan for **shared mutable state that two operations can touch at once**:
+In most LLD problems there are a small number — often just one, sometimes two or three coupled ones — of **invariants that must stay true under concurrent access**. Your job is to name them and protect exactly those. Train yourself to scan for **shared mutable state that two operations can touch at once**, and ask "what must remain true here?":
 
-| Problem | The one contended resource |
+| Problem | The contended invariant(s) |
 |---|---|
-| Parking lot | The spot's occupied flag (two cars, last spot). |
-| Movie booking | The seat's availability (two users, same seat). |
-| ATM / bank | The account balance (two withdrawals). |
-| Ride-hailing | The driver's availability (two riders, one driver). |
-| LRU cache | The map + linked list pair (must update together). |
-| Rate limiter | The per-key counter/bucket. |
-| Inventory / vending | The stock count for an item. |
+| Parking lot | A spot holds at most one vehicle (two cars, last spot). |
+| Movie booking | A seat is booked once — *and* the seat-lock, booking state, and payment callback stay consistent. |
+| ATM / bank | The account balance never goes negative / isn't lost-updated (two withdrawals). |
+| Ride-hailing | A driver is assigned to at most one trip (two riders, one driver). |
+| LRU cache | The map and linked list stay in sync (update together). |
+| Rate limiter | The per-key counter/bucket updates atomically. |
+| Inventory / vending | Stock count never oversells an item. |
 
-Notice the pattern: it's a **claim on a limited resource** — a seat, a spot, a driver, a unit of stock, a slot of quota. Point at it explicitly: "The race is here — two threads both see the seat as free and both book it. Everything else is read-only or thread-local, so this is the only thing I need to protect."
+Notice the common shape: a **claim on a limited resource** — a seat, a spot, a driver, a unit of stock, a slot of quota. Often there's a single obvious one; but some problems have **several coupled invariants** (movie booking couples the seat hold, the booking's state transition, and idempotency of the payment webhook). Don't force "there is exactly one" — instead *rank* them and protect each. Point at them explicitly: "The races are here — two threads both see the seat free, and separately the payment callback can fire twice; everything else is read-only or thread-local."
 
-That sentence alone earns most of the concurrency marks. You've proven you see the race and you've *bounded* it.
+Naming the invariants precisely earns most of the concurrency marks. You've proven you see the races and you've *bounded* them.
 
 ---
 
 ## Pick a mechanism, and know the trade-off in one line each
 
-Once you've named the resource, choose how to protect it. Have three tools ready and the one-line trade-off for each:
+Once you've named the invariant, choose how to protect it. Have three tools ready and the one-line trade-off for each:
 
 - **Pessimistic lock (mutex / synchronized block).** Grab a lock around the critical section (find-and-claim). *Simple and obviously correct; can become a contention bottleneck if the lock is coarse.* This is your default first answer.
 - **Fine-grained / striped locking.** Lock per-resource or per-shard (a lock per level, per account, per key) instead of one global lock. *Reduces contention; more bookkeeping and risk of deadlock if you take multiple.* Reach for it when the interviewer says "the global lock is a bottleneck."
@@ -109,10 +109,10 @@ If your design takes more than one lock (transfer between two accounts, moving s
 
 ```mermaid
 flowchart LR
-    A[Is concurrency<br/>in scope?] --> B[Name the ONE<br/>contended resource]
+    A[Is concurrency<br/>in scope?] --> B[Name the<br/>contended invariants]
     B --> C[Pick a mechanism<br/>+ trade-off]
     C --> D[Hold/idempotent<br/>if slow step]
     D --> E[Move on]
 ```
 
-Find the one contended resource, protect just it with the simplest mechanism that's correct, state the trade-off and the upgrade path, use claim-then-confirm when a slow step is involved, and make repeatable operations idempotent. Do that in three or four sentences and you've fully satisfied the concurrency dimension — without letting it swallow the design. The candidates who fail here aren't the ones who "didn't know locking"; they're the ones who either missed the race or fell into it and never climbed out.
+Find the contended invariant(s) — often one, sometimes a few coupled — protect just those with the simplest mechanism that's correct, state the trade-off and the upgrade path, use claim-then-confirm when a slow step is involved, and make repeatable operations idempotent. Do that in three or four sentences and you've fully satisfied the concurrency dimension — without letting it swallow the design. The candidates who fail here aren't the ones who "didn't know locking"; they're the ones who either missed the race or fell into it and never climbed out.

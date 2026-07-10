@@ -34,6 +34,8 @@ The gold standard your design is aiming for is the **Open/Closed principle**: op
 
 If your follow-up answers keep being "I'll add a class here," you're demonstrating exactly what the interview measures. If they keep being "let me rewrite that method," your seams were in the wrong place.
 
+**A caveat, so this doesn't turn into class-proliferation:** "closed for modification" means the *change is localized behind the right seam* — not that every tweak must become a brand-new class. Sometimes the cleanest extension is a new config value, a new enum case handled in one cohesive place, or a parameter on an existing policy. A senior interviewer will push back if you spawn a new `Strategy` subclass for what is really one data-driven rule. The judgment being tested is "where is the seam, and what is the smallest change that respects it" — occasionally that's a new class, occasionally it's an edit in exactly one well-chosen spot.
+
 ```mermaid
 classDiagram
     class Context

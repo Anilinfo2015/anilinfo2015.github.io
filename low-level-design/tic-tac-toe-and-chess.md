@@ -136,6 +136,8 @@ interface MovementStrategy {
 Say this out loud:
 > "The API is intentionally boring. The game asks rules whether a move is legal, applies it to the board, then asks rules whether the game ended. That is the turn loop. Everything else hangs off that."
 
+**If the interviewer specifically wants Chess (not the generic skeleton),** don't let "I'll only show one piece" sound evasive. Name the full *legal-move pipeline* even while implementing only part of it: (1) `MovementStrategy` generates geometric candidate moves per piece; (2) `MoveValidator` filters for path-blocking and capture rules; (3) a **king-safety** check rejects any move that leaves your own king in check (simulate the move, ask "is my king attacked?", undo). Special rules — castling, en passant, promotion — are extra validators keyed on board history. Then scope explicitly: "I'll implement `MovementStrategy` for the rook and the king-safety filter to show the pipeline; the rest are more validators in the same shape." That frames the deferral as *architecture*, not avoidance.
+
 Do not add:
 ```text
 calculateBestMove()

@@ -198,11 +198,14 @@ send(request):
 
     for channelType in channels:
       job = DispatchJob(notification.id, recipient, channelType, rendered)
+      persist(notification, job)     // durably record BEFORE enqueue (outbox)
       queue.enqueue(job)
 
   mark notification ACCEPTED
   return notification.id
 ```
+
+The ordering matters and is worth saying out loud: **persist the notification and its dispatch jobs, then enqueue** (the outbox pattern). If you enqueue first and crash before persisting, you can double-send or lose the record. With an outbox, a worker re-reads durable jobs after a crash, and the per-`(notificationId, userId, channelType)` delivery record makes a retried send a no-op. For an in-memory LLD you can keep `persist` behind a repository seam, but you should *name* this as the reliability backbone, not treat it as an afterthought.
 
 Then narrate the worker path:
 

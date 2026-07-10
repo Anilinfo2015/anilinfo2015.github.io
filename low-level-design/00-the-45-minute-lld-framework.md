@@ -40,6 +40,18 @@ Notice: **only 6 minutes** on the class model, **13 minutes** on making it actua
 
 ---
 
+## Before you start: calibrate the format (30 seconds)
+
+Not every "LLD round" wants the same deliverable. Spend 30 seconds establishing which of three modes you're in, because it changes your time budget:
+
+- **Design-only (whiteboard/talk).** The 45-minute budget below applies as-is: model, interfaces, flows, extensions.
+- **Design + code skeleton.** The interviewer wants runnable-looking classes/methods for the core. Compress clarify/entities to ~15 minutes and reserve ~20+ for typing the key classes and one flow. Don't gold-plate the model; the code is the artifact being scored.
+- **Full implementation (often 60–90 min).** Design fast (~15 min), then implement and test the core use case. Here, working code with a couple of unit tests beats a broader design.
+
+Ask directly: "Do you want a design and interfaces, a code skeleton, or a working implementation?" A past-staff engineer who keeps "failing LLD" is sometimes failing because they delivered a talk-through design in a round that wanted code, or vice-versa. Match the deliverable first; then run the stages, stretching or compressing to fit.
+
+---
+
 ## Stage 1 — Clarify and scope (0–7 min)
 
 **Output: a written list of 3–5 in-scope use cases and an explicit out-of-scope list.**

@@ -118,7 +118,9 @@ Payment can be a seam too, but do not over-pattern it unless asked:
 
 ```text
 interface PaymentProcessor {
-  PaymentResult charge(CustomerId customerId, Money amount, PaymentMethod method)
+  AuthResult authorize(CustomerId customerId, Money amount, PaymentMethod method) // place a hold
+  void       capture(AuthId authId)   // take the held money
+  void       void(AuthId authId)      // release the hold; nothing captured
 }
 ```
 
@@ -164,7 +166,7 @@ sequenceDiagram
 Narrate:
 - "`Cart` is validated at checkout because menu price or availability may have changed."
 - "An `Order` snapshot stores item names and prices at order time; it does not depend on future menu edits."
-- "Payment success creates a `PLACED` order."
+- "Payment is *authorized* (held) at checkout, creating a `PLACED` order; capture happens on acceptance."
 - "Restaurant acceptance moves it to `ACCEPTED` and then `PREPARING`."
 - "Assignment chooses an available agent through `DeliveryAssignmentStrategy`."
 Pseudo-code:
@@ -176,13 +178,15 @@ placeOrder(cartId, paymentMethod):
   restaurant.validateOpen()
   restaurant.validateItemsAvailable(cart.items)
   amount = cart.calculateTotalFromCurrentMenu()
-  payment = paymentProcessor.charge(cart.customerId, amount, paymentMethod)
-  if payment.failed:
+  auth = paymentProcessor.authorize(cart.customerId, amount, paymentMethod)  // hold, not charge
+  if auth.failed:
     throw PaymentFailedException
-  order = Order.fromCart(cart, amount, PLACED)
+  order = Order.fromCart(cart, amount, auth.id, PLACED)
   orderRepo.save(order)
   return order.id
 ```
+
+Say the payment model out loud, because a naive "charge now, refund on rejection" is a real product-quality miss an interviewer will probe: **authorize at checkout (place a hold), capture only after the restaurant accepts.** If the restaurant rejects or times out, you *void the authorization* — no money ever moved, so there's nothing to refund and no customer-visible charge-then-refund churn. This is why `PaymentProcessor` should expose `authorize`, `capture`, and `void`, not a single `charge`.
 
 Restaurant acceptance:
 
@@ -191,9 +195,10 @@ restaurantRespond(orderId, restaurantId, decision):
   order = orderRepo.get(orderId)
   order.ensureRestaurant(restaurantId)
   if decision == REJECT:
+    paymentProcessor.void(order.authId)   // release the hold; nothing was captured
     order.cancel("restaurant rejected")
-    refundIfPaid(order)
     return
+  paymentProcessor.capture(order.authId)   // now take the money
   order.accept()
   order.startPreparing()
   assignAgent(order)
@@ -240,7 +245,7 @@ This diagram is the design's backbone. Keep all state changes legal and named.
 Bounded transition:
 - `PLACED -> CANCELLED`
 - record rejection reason
-- refund payment if already captured
+- void the payment authorization (nothing was captured, so no refund is needed)
 - do not assign an agent
 Say:
 > "A restaurant rejection is a normal business transition, not an exception that leaves the order half-created."

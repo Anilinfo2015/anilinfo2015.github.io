@@ -123,8 +123,9 @@ sequenceDiagram
     ES->>D: assign(hallCall)
     D-->>ES: carA
     ES->>E: addPickup(3, UP)
-    E->>Door: open()
-    E-->>P: Assignment(carA)
+    ES-->>P: Assignment(carA)
+    Note over E: control ticks advance car toward floor 3
+    E->>Door: open() on arrival at 3
 ```
 
 Then narrate the mechanics:

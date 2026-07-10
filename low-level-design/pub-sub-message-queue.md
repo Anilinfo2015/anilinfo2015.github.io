@@ -223,7 +223,7 @@ Common curveballs and bounded answers:
 
 - **"What if a subscriber is slow?"** Use a bounded per-subscriber queue. When full, pick a backpressure policy: block publisher, drop newest, drop oldest, or route to dead-letter. Make it a `BackpressurePolicy` if the interviewer wants variation. Do not let a slow handler run under the topic lock.
 
-- **"At-least-once or at-most-once?"** At-most-once means mark delivered before calling the handler and never retry; it may lose messages on handler failure. At-least-once means retry until ack or max attempts, so handlers must be idempotent. Say that trade-off plainly.
+- **"At-least-once or at-most-once?"** At-most-once means mark delivered before calling the handler and never retry; it may lose messages on handler failure. At-least-once means retry until ack or max attempts, so handlers must be idempotent. Say that trade-off plainly. **Be honest about the limit:** in an *in-process, non-persistent* broker, "at-least-once" only holds while the process is alive — a crash loses un-acked in-memory messages. True crash-safe at-least-once needs a durable log/outbox behind a `MessageStore` seam; call that out as the boundary between this LLD and a real durable queue.
 
 ```text
 interface AckPolicy {

@@ -90,6 +90,26 @@ Whether you're preparing for FAANG interviews, architecting your next startup, o
 | **Horizontal Scaling** | Scale out with more machines | [Read →](scalability/horizontal-scaling.md) |
 | **Vertical Scaling** | Scale up with more powerful hardware | [Read →](scalability/vertical-scaling.md) |
 
+### 🧩 Low-Level Design (LLD) Interview Playbook
+
+A self-contained series on solving low-level / object-oriented design problems in a 45-minute interview without rabbit-holing, over-focusing on algorithms, or drowning in class diagrams. Every article stands alone and uses small mermaid diagrams.
+
+| Topic | Description | Link |
+|-------|-------------|------|
+| **The 45-Minute LLD Framework** | A repeatable, time-boxed pipeline for any LLD problem | [Read →](low-level-design/00-the-45-minute-lld-framework.md) |
+| **Clarifying & Scoping** | Kill rabbit holes in the first 7 minutes | [Read →](low-level-design/01-clarifying-requirements-and-scope.md) |
+| **Reading the Interviewer** | Decode what the interviewer actually wants | [Read →](low-level-design/02-reading-the-interviewer.md) |
+| **Modeling Without Heavy OOP** | Responsibilities & composition over hierarchies | [Read →](low-level-design/03-modeling-entities-without-heavy-oop.md) |
+| **Clean Interfaces & APIs** | Give your design a spine | [Read →](low-level-design/04-designing-clean-interfaces-and-apis.md) |
+| **Design-Pattern Selection** | Which patterns actually show up, and when | [Read →](low-level-design/05-practical-design-pattern-selection.md) |
+| **Concurrency & Thread-Safety** | Find the contended invariant, protect it proportionately | [Read →](low-level-design/06-concurrency-and-thread-safety.md) |
+| **Avoiding Rabbit Holes** | Escape algorithm traps under time pressure | [Read →](low-level-design/07-avoiding-rabbit-holes-and-algorithm-traps.md) |
+| **Time-Boxing & Thinking Aloud** | Finish on time and make reasoning scoreable | [Read →](low-level-design/08-time-boxing-and-thinking-aloud.md) |
+| **Follow-ups & Extensibility** | Turn curveballs into points | [Read →](low-level-design/09-handling-followups-and-extensibility.md) |
+| **Common-Mistakes Checklist** | The failure modes and their fixes | [Read →](low-level-design/10-common-mistakes-checklist.md) |
+
+**Worked problem walkthroughs:** [Parking Lot](low-level-design/parking-lot.md) · [Elevator](low-level-design/elevator-system.md) · [Vending Machine](low-level-design/vending-machine.md) · [ATM](low-level-design/atm-machine.md) · [Rate Limiter](low-level-design/rate-limiter.md) · [LRU Cache](low-level-design/lru-cache.md) · [In-Memory KV Store](low-level-design/in-memory-key-value-store.md) · [Splitwise](low-level-design/splitwise-expense-sharing.md) · [Notification Service](low-level-design/notification-service.md) · [Logging Framework](low-level-design/logging-framework.md) · [Tic-Tac-Toe & Chess](low-level-design/tic-tac-toe-and-chess.md) · [Snake & Ladder](low-level-design/snake-and-ladder.md) · [Deck of Cards / BlackJack](low-level-design/deck-of-cards-blackjack.md) · [Movie Ticket Booking](low-level-design/movie-ticket-booking.md) · [Meeting Scheduler](low-level-design/meeting-scheduler-calendar.md) · [Food Delivery](low-level-design/food-delivery.md) · [Pub-Sub Queue](low-level-design/pub-sub-message-queue.md) · [Text Editor Undo/Redo](low-level-design/text-editor-undo-redo.md) · [Ride-Hailing](low-level-design/ride-hailing-uber.md)
+
 ---
 
 ## 🎬 Featured Case Studies
