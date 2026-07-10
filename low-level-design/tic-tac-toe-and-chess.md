@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design Tic-Tac-Toe and Chess Board Modeling"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Board Games", "Strategy Pattern", "Game Loop", "OOD"]
+topics: ["Low-Level Design", "Board Games", "Strategy Pattern", "Factory Method", "Game Loop", "Chess", "OOD"]
 ---
 
 # LLD Walkthrough: Design Tic-Tac-Toe and Chess Board Modeling
@@ -295,6 +295,84 @@ If you have 30 extra seconds, summarize testing:
 - full board draw
 - chess knight candidate moves stay inside board
 ---
+
+## How real systems solve this
+
+Production board-game code usually splits the problem into two layers: a small game-state layer (`Board`, `Move`, `Player`, `GameState`) and a rules layer that answers "is this move legal?" and "did this position end the game?" That is exactly why the interview model should not bury rules inside UI cells. The board stores state; strategies and validators interpret it.
+
+For Tic-Tac-Toe, real correctness does not require scanning the whole board after every move. Maintain running row, column, and diagonal counters per mark. A move at `(r, c)` updates one row counter, one column counter, and maybe one or two diagonal counters; if any absolute counter reaches `n`, that player has won. The turn loop stays simple and win detection becomes O(1) per move.
+
+Chess is the opposite: the visible board is simple, but legal move generation is deep. Engines commonly represent positions with bitboards — 64-bit words keyed by piece type or color — because move generation is dominated by set operations over squares. Human-readable position exchange uses FEN. Search, when added, sits outside the LLD spine: minimax with alpha-beta pruning and transposition tables consumes legal moves; it should not be tangled into `Board.place()`.
+
+The practical chess pipeline is staged: generate candidate moves using per-piece movement strategy, filter illegal captures/path blocks, reject moves that leave the king in check, then apply history-aware rules such as castling, en passant, and promotion. That is why `MovementStrategy` is the right seam even if the live interview only implements one piece.
+
+## Reference implementation
+
+Below is the core Tic-Tac-Toe mechanism: constant-time win detection through counters. It deliberately leaves UI, persistence, and replay outside the class.
+
+```python
+class TicTacToe:
+    def __init__(self, size: int = 3):
+        if size < 3:
+            raise ValueError("size must be at least 3")
+        self.n = size
+        self.board = [[None for _ in range(size)] for _ in range(size)]
+        self.rows = {"X": [0] * size, "O": [0] * size}
+        self.cols = {"X": [0] * size, "O": [0] * size}
+        self.diag = {"X": 0, "O": 0}
+        self.anti = {"X": 0, "O": 0}
+        self.moves = 0
+        self.turn = "X"
+        self.winner = None
+
+    def play(self, row: int, col: int) -> dict:
+        if self.winner:
+            raise ValueError("game already finished")
+        if not (0 <= row < self.n and 0 <= col < self.n):
+            raise ValueError("position outside board")
+        if self.board[row][col] is not None:
+            raise ValueError("cell already occupied")
+
+        mark = self.turn
+        self.board[row][col] = mark
+        self.moves += 1
+        self.rows[mark][row] += 1
+        self.cols[mark][col] += 1
+        if row == col:
+            self.diag[mark] += 1
+        if row + col == self.n - 1:
+            self.anti[mark] += 1
+
+        won = (self.rows[mark][row] == self.n or self.cols[mark][col] == self.n
+               or self.diag[mark] == self.n or self.anti[mark] == self.n)
+        if won:
+            self.winner = mark
+        elif self.moves < self.n * self.n:
+            self.turn = "O" if mark == "X" else "X"
+        return {"winner": self.winner, "draw": not self.winner and self.moves == self.n * self.n}
+```
+
+## Complexity and trade-offs
+
+| Operation | Simple scan design | Counter/strategy design |
+|---|---:|---:|
+| Tic-Tac-Toe move validation | O(1) | O(1) |
+| Tic-Tac-Toe win check | O(n) row/column/diagonal scan | O(1) counter update |
+| Chess candidate generation | Depends on piece and board scan | Fast with piece strategies; engine-grade bitboards optimize further |
+| Memory | Board only | Board plus counters or move metadata |
+
+- Counters make Tic-Tac-Toe faster and easier to test, but they must be updated atomically with the board mutation.
+- Composition-based movement strategies avoid a brittle chess inheritance tree, but special rules still need history-aware validators.
+- Bitboards are excellent for engines, but they are usually too low-level for the first interview sketch unless performance is explicitly requested.
+- FEN is useful at system boundaries: tests, debugging, storage, and engine interop.
+
+## Further reading
+
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — movement rules and win rules vary behind stable game APIs.
+- [Factory Method](https://refactoring.guru/design-patterns/factory-method) — useful when constructing piece sets without coupling clients to concrete piece creation.
+- [Chess Programming Wiki](https://www.chessprogramming.org/Main_Page) — practical background on bitboards, move generation, minimax, alpha-beta, and transposition tables.
+- [Forsyth–Edwards Notation](https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation) — standard textual representation of chess positions.
+- *Design Patterns* — GoF — canonical source for Strategy and Factory Method vocabulary.
 
 ## What separated a pass from a fail here
 - You finished one game end to end instead of half-designing ten games.

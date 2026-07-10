@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Movie Ticket Booking System (BookMyShow-style)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~18 minutes"
+readingTime: "~24 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Movie Ticket Booking", "Seat Locking", "Strategy Pattern", "Concurrency"]
+topics: ["Low-Level Design", "Movie Ticket Booking", "Seat Locking", "Optimistic Concurrency", "Idempotency", "Strategy Pattern", "Concurrency"]
 ---
 
 # LLD Walkthrough: Design a Movie Ticket Booking System
@@ -283,6 +283,96 @@ Close each with:
 ## Minute 42-45: Wrap up
 > "The design has nine core objects. `BookingService` orchestrates the flow, `PricingStrategy` is the clean variation seam, and the correctness boundary is a temporary `SeatLock` on `(showId, seatId)` with TTL. The booking state machine prevents ambiguous half-paid or half-held bookings. Payment failure and expiry release seats; payment success persists confirmed seats."
 That is the snapshot you want in the interviewer's notes.
+
+---
+
+## How real systems solve this
+
+The hard part is not listing movies; it is protecting scarce seat inventory for one showtime. Availability should be derived per `(showId, seatId)`, not stored as a mutable flag on the physical seat. A confirmed booking and an active hold both make that seat unavailable to other users.
+
+There are two standard production approaches. A pessimistic path locks seat rows inside a database transaction with `SELECT ... FOR UPDATE`, then confirms or releases them before the transaction ends. That is simple and strong for short operations, but it is a poor fit for a payment window because users may take minutes to complete checkout.
+
+The common booking pattern is therefore a temporary seat hold with a TTL, often on the order of 5-10 minutes, plus optimistic concurrency. A user atomically creates or refreshes a hold only if the current version still matches and no non-expired hold or booking exists. If payment succeeds, the hold converts to a booking; if payment fails or the TTL expires, the seat returns to available.
+
+Payment must also be idempotent. A retry from the client or payment callback should not double-charge or double-confirm. The interview version can use an in-memory CAS, but the production boundary is the same: one atomic write protects the seat hold, and an idempotency key protects payment confirmation.
+
+## Reference implementation
+
+This Java snippet shows optimistic CAS-style seat holds. The synchronized block stands in for a database conditional update on `(showId, seatId, version)`.
+
+```java
+import java.time.*;
+import java.util.*;
+
+record SeatKey(String showId, String seatId) {}
+
+final class SeatHoldStore {
+    static final class Hold {
+        final String userId;
+        final Instant expiresAt;
+        final long version;
+
+        Hold(String userId, Instant expiresAt, long version) {
+            this.userId = userId;
+            this.expiresAt = expiresAt;
+            this.version = version;
+        }
+    }
+
+    private final Map<SeatKey, Hold> holds = new HashMap<>();
+    private final Set<SeatKey> booked = new HashSet<>();
+    private final Duration ttl = Duration.ofMinutes(5);
+
+    synchronized Hold tryHold(String showId, String seatId, String userId, Instant now) {
+        SeatKey key = new SeatKey(showId, seatId);
+        if (booked.contains(key)) return null;
+
+        Hold current = holds.get(key);
+        if (current != null && current.expiresAt.isAfter(now)
+                && !current.userId.equals(userId)) {
+            return null;
+        }
+
+        long nextVersion = current == null ? 1 : current.version + 1;
+        Hold next = new Hold(userId, now.plus(ttl), nextVersion);
+        holds.put(key, next);
+        return next;
+    }
+
+    synchronized boolean confirm(SeatKey key, String userId, long version, Instant now) {
+        Hold hold = holds.get(key);
+        if (hold == null || !hold.userId.equals(userId)
+                || hold.version != version || !hold.expiresAt.isAfter(now)) {
+            return false;
+        }
+        booked.add(key);
+        holds.remove(key);
+        return true;
+    }
+}
+```
+
+## Complexity and trade-offs
+
+| Operation | Typical cost | Notes |
+|---|---:|---|
+| Read seat map | `O(s)` | Combine `s` seats with bookings and active holds for a show. |
+| Hold one seat | `O(1)` average | Conditional write on `(showId, seatId)`. |
+| Hold multiple seats | `O(k)` | Must acquire or CAS `k` seats consistently. |
+| Confirm booking | `O(k)` | Validate holds and convert to booked rows. |
+| Expire holds | `O(e)` | Background cleanup scans expired holds or uses TTL indexing. |
+
+- Pessimistic locks are simple for short critical sections, but bad for long payment windows.
+- TTL holds improve user experience, but require expiry cleanup and clear messaging when time runs out.
+- Optimistic CAS scales well under light contention, but hot shows may see retries and failed holds.
+- Idempotent payment confirmation avoids double-charge bugs, but couples booking confirmation to a durable payment-attempt record.
+
+## Further reading
+
+- [Stripe: Designing robust and predictable APIs with idempotency](https://stripe.com/blog/idempotency) — retry-safe payment confirmation concepts.
+- [Refactoring Guru: State](https://refactoring.guru/design-patterns/state) — booking and payment state transitions without boolean flags.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — transactions, consistency, and concurrency-control background.
+- *Effective Java* — Joshua Bloch — implementation discipline for immutable keys and safe value objects.
 
 ---
 

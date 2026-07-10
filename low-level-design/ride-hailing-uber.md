@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Ride-Hailing System Like Uber"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~18 minutes"
+readingTime: "~24 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Ride Hailing", "State Machine", "Strategy Pattern", "Concurrency"]
+topics: ["Low-Level Design", "Ride Hailing", "Geospatial Indexing", "State Machine", "Strategy Pattern", "Concurrency"]
 ---
 
 # LLD Walkthrough: Design a Ride-Hailing System Like Uber
@@ -283,6 +283,97 @@ If there is one minute left, list tests:
 ```
 
 Stop there. More marketplace design will dilute the answer.
+
+---
+
+## How real systems solve this
+
+The interview answer usually says "nearest driver," but real ride-hailing systems first make nearby lookup cheap. Uber's H3 represents the world as a hierarchical hexagonal spatial index: driver locations and ride requests map to cells, and the candidate search scans the request cell plus a k-ring of neighboring hexes. Hexagons make neighbor distance more uniform than square grids, which is useful when expanding the search radius.
+
+Candidate generation is still not the final match. A greedy nearest-driver strategy is fast and easy to explain, but it can make globally poor choices when several riders and drivers arrive close together. Uber's DISCO-style dispatch batches requests and drivers over a short window and solves a bipartite min-weight matching problem, with weights such as ETA, using Hungarian- or auction-style optimization.
+
+Pricing and lifecycle remain separate seams. Surge can be computed per H3 hex when demand outstrips supply, while the trip object still moves through `requested -> matched -> driver_enroute -> on_trip -> completed/cancelled`. That separation is the LLD point: spatial indexing and dispatch can become sophisticated without turning trip state into a collection of flags.
+
+A production design therefore has at least two layers behind `MatchingStrategy`: a spatial index for candidates and an optimizer for assignment. The interview simplification may use nearest available driver, but the abstraction should not prevent batched matching, per-hex surge, or atomic driver claiming later.
+
+## Reference implementation
+
+This focused Python example shows an H3-style bucketed spatial index using square buckets for simplicity. The mechanism is the same LLD seam: update driver buckets, scan neighboring buckets, and return the nearest available candidate before an atomic claim.
+
+```python
+from dataclasses import dataclass
+from math import hypot
+from collections import defaultdict
+
+@dataclass(frozen=True)
+class Location:
+    x: float
+    y: float
+
+@dataclass
+class Driver:
+    driver_id: str
+    location: Location
+    available: bool = True
+
+class BucketedDriverIndex:
+    def __init__(self, cell_size: float = 1.0):
+        self.cell_size = cell_size
+        self.drivers = {}
+        self.buckets = defaultdict(set)
+
+    def _cell(self, loc: Location) -> tuple[int, int]:
+        return (int(loc.x // self.cell_size), int(loc.y // self.cell_size))
+
+    def upsert(self, driver: Driver) -> None:
+        old = self.drivers.get(driver.driver_id)
+        if old:
+            self.buckets[self._cell(old.location)].discard(driver.driver_id)
+        self.drivers[driver.driver_id] = driver
+        self.buckets[self._cell(driver.location)].add(driver.driver_id)
+
+    def nearest_available(self, pickup: Location, max_ring: int = 2) -> Driver | None:
+        base_x, base_y = self._cell(pickup)
+        best: tuple[float, Driver] | None = None
+        for ring in range(max_ring + 1):
+            for dx in range(-ring, ring + 1):
+                for dy in range(-ring, ring + 1):
+                    if max(abs(dx), abs(dy)) != ring:
+                        continue
+                    for driver_id in self.buckets.get((base_x + dx, base_y + dy), set()):
+                        driver = self.drivers[driver_id]
+                        if not driver.available:
+                            continue
+                        distance = hypot(driver.location.x - pickup.x, driver.location.y - pickup.y)
+                        if best is None or distance < best[0]:
+                            best = (distance, driver)
+            if best is not None:
+                return best[1]
+        return None
+```
+
+## Complexity and trade-offs
+
+| Operation | Typical cost | Notes |
+|---|---:|---|
+| Driver location update | `O(1)` average | Remove from old cell, add to new cell. |
+| k-ring candidate lookup | `O(c + d)` | `c` scanned cells, `d` candidate drivers in those cells. |
+| Greedy match one request | `O(d)` | Fast, but may be globally suboptimal. |
+| Batched bipartite matching | polynomial in batch size | Better global assignment, but adds latency and optimizer complexity. |
+| Trip transition | `O(1)` | State machine validates one edge. |
+
+- Larger cells reduce index overhead but increase candidate filtering work.
+- Wider k-rings improve recall when supply is sparse, but add latency and more stale candidates.
+- Batched matching improves marketplace efficiency, but the batching window trades off against rider wait time.
+- Surge per cell is explainable and local, but adjacent-cell boundaries can create pricing discontinuities.
+
+## Further reading
+
+- [Uber Engineering: H3](https://www.uber.com/blog/h3/) — Uber's explanation of its hexagonal hierarchical geospatial index.
+- [H3 documentation](https://h3geo.org/) — reference material for H3 cells, resolutions, and grid traversal.
+- [Refactoring Guru: State](https://refactoring.guru/design-patterns/state) — clean modeling for the trip lifecycle.
+- [Refactoring Guru: Strategy](https://refactoring.guru/design-patterns/strategy) — matching and pricing variation behind interfaces.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — useful background for location streams, consistency, and operational trade-offs.
 
 ---
 

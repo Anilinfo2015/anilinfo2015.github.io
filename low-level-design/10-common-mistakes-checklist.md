@@ -1,7 +1,7 @@
 ---
 title: "The LLD Interview Common-Mistakes Checklist (and the Fix for Each)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~11 minutes"
+readingTime: "~13 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Anti-patterns", "Checklist", "Interview Technique"]
@@ -121,6 +121,44 @@ flowchart LR
 - One contended resource, protected proportionately.
 - Patterns only where variation/lifecycle demands them.
 - Narrate trade-offs; check heading at the joints; protect the wrap-up.
+
+---
+
+## A worked example
+
+Prompt: "Design a movie ticket booking system." Three common mistakes show up fast:
+
+**Before: no scoping.** You start with theaters, cities, recommendations, coupons, food ordering, refunds, and loyalty points.
+
+**After: scope fence.**
+
+> "In scope: browse shows, hold seats, pay, confirm booking. Out of scope unless asked: recommendations, refunds, coupons, and food ordering."
+
+Now the model is small enough to finish.
+
+**Before: hand-wavy concurrency.** `bookSeat(seatId)` checks `seat.isFree()` and later marks it booked after payment. Two users can both pass the check.
+
+**After: one contended resource.**
+
+> "The seat claim is the race. I'll atomically move `Free → Held` under a per-seat or per-show lock, take payment outside the lock, then `Held → Booked` on success or expire the hold."
+
+Now you have a working state machine instead of hope.
+
+**Before: algorithm rabbit-hole.** You spend ten minutes optimizing "best available seats."
+
+**After: seam.**
+
+> "`SeatSelectionStrategy` returns candidate seats; I'll start with a simple contiguous-seat scan and keep the booking flow independent of that choice."
+
+These are small edits, but they change the interview from sprawling and fragile to scoped, correct, and extensible.
+
+## Further reading
+
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — concise vocabulary for responsibility boundaries and extension seams.
+- [Design Patterns](https://refactoring.guru/design-patterns) — useful for recognizing when Strategy, State, or Adapter is actually warranted.
+- [Java Concurrency Tutorial](https://docs.oracle.com/javase/tutorial/essential/concurrency/) — practical grounding for the concurrency mistakes candidates often hand-wave.
+- *Clean Code* — Robert C. Martin — reinforces small responsibilities, clear APIs, and readable flows.
+- *A Philosophy of Software Design* — John Ousterhout — strong mental model for avoiding unnecessary complexity.
 
 ---
 

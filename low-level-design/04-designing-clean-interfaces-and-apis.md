@@ -1,10 +1,10 @@
 ---
 title: "Designing Clean Interfaces and APIs: Giving Your LLD a Spine"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~12 minutes"
+readingTime: "~14 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "API Design", "Interfaces", "Abstraction"]
+topics: ["Low-Level Design", "API Design", "Interfaces", "Abstraction", "SOLID", "Strategy"]
 ---
 
 # Designing Clean Interfaces and APIs
@@ -111,6 +111,54 @@ flowchart LR
 - One narrow interface per variation point; one method each where possible.
 - Orchestrator depends on interfaces; concrete impls injected in.
 - Contracts and failure modes stated in a sentence each.
+
+---
+
+## A worked example
+
+Here is a common smell in a rate-limiter design: one interface that knows every future policy and every operational detail.
+
+```java
+interface RateLimiter {
+    boolean allow(String key);
+    void refill(String key);
+    void reset(String key);
+    void setLimit(String key, int limit);
+    Map<String, Integer> debugCounters();
+}
+```
+
+That violates interface segregation: clients that only need `allow` now depend on refill, reset, configuration, and diagnostics. Split the stable API from the variation seam:
+
+```java
+interface RateLimitPolicy {
+    boolean allow(String key, long nowMillis);
+}
+
+final class RateLimiter {
+    private final RateLimitPolicy policy;
+
+    RateLimiter(RateLimitPolicy policy) {
+        this.policy = policy;
+    }
+
+    boolean allow(String key) {
+        return policy.allow(key, System.currentTimeMillis());
+    }
+}
+```
+
+Now the public API is narrow and intention-revealing: callers ask one question, "is this request allowed?" The algorithm varies behind `RateLimitPolicy`: token bucket, fixed window, or sliding window can be injected without editing the orchestrator. That is GoF's "program to an interface" and SOLID's dependency inversion in one small move. It also creates a deep module: a simple surface hiding policy complexity.
+
+---
+
+## Further reading
+
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — interface segregation and dependency inversion are directly applicable to LLD API seams.
+- [Design Patterns](https://refactoring.guru/design-patterns) — Strategy and Factory are common ways to keep APIs stable while behavior varies.
+- [Martin Fowler bliki](https://martinfowler.com/bliki/) — concise design vocabulary for APIs, seams, and refactoring decisions.
+- *A Philosophy of Software Design* — John Ousterhout — excellent framing for deep modules and narrow interfaces.
+- *Effective Java* — Joshua Bloch — practical guidance on small, robust APIs.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: "Practical Design-Pattern Selection for LLD: Which Patterns Actually Show Up"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~14 minutes"
+readingTime: "~16 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Design Patterns", "Strategy", "State", "Observer", "Command"]
@@ -129,6 +129,55 @@ Interviewers penalize gratuitous patterns as much as missing ones. Guardrails:
 | "Many optional construction params" | Builder |
 | "Wrap an incompatible API" | Adapter |
 | "Tree of uniform parts" | Composite |
+
+---
+
+## A worked example
+
+Prompt: **"Design a rate limiter."** A pattern-smelly answer starts with inheritance:
+
+```text
+abstract class RateLimiter
+  TokenBucketRateLimiter
+  FixedWindowRateLimiter
+  SlidingWindowRateLimiter
+```
+
+That subclasses the whole service even though only one thing varies: the allow/deny algorithm. The service API, key extraction, metrics, and error handling do not need three copies. Prefer Strategy:
+
+```python
+from abc import ABC, abstractmethod
+import time
+
+class LimitAlgorithm(ABC):
+    @abstractmethod
+    def allow(self, key: str, now: float) -> bool:
+        pass
+
+class RateLimiter:
+    def __init__(self, algorithm: LimitAlgorithm):
+        self.algorithm = algorithm
+
+    def allow(self, key: str) -> bool:
+        return self.algorithm.allow(key, time.time())
+
+class TokenBucket(LimitAlgorithm):
+    def allow(self, key: str, now: float) -> bool:
+        # Real token accounting is hidden here; the service stays unchanged.
+        return True
+```
+
+Now your interview answer is precise: "The algorithm varies, so I use Strategy. `RateLimiter` is stable; token bucket and fixed window are implementations." If the interviewer asks for sliding window later, you add `SlidingWindow`, not a new service hierarchy. If they ask for per-user configuration, that may be a factory or repository concern — not a reason to decorate every class with another pattern.
+
+---
+
+## Further reading
+
+- [Design Patterns](https://refactoring.guru/design-patterns) — quick pattern catalog for Strategy, State, Observer, Factory, Command, and supporting patterns.
+- [Refactoring](https://refactoring.guru/refactoring) — useful for recognizing over-patterning and extracting patterns only when variation appears.
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — grounding for open/closed and dependency inversion when introducing patterns.
+- *Design Patterns* — GoF (Gamma, Helm, Johnson, Vlissides) — the original pattern language.
+- *Head First Design Patterns* — Freeman & Robson — approachable practice for choosing patterns by intent.
 
 ---
 

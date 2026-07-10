@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Deck of Cards and Blackjack"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Deck of Cards", "Blackjack", "Strategy Pattern", "State Machine"]
+topics: ["Low-Level Design", "Deck of Cards", "Blackjack", "Fisher-Yates", "Strategy Pattern", "State Machine"]
 ---
 
 # LLD Walkthrough: Design a Deck of Cards and Blackjack
@@ -303,6 +303,85 @@ If you have 20 seconds, emphasize the deck boundary:
 > "`Deck` never asks whether a card is good for Blackjack. It only shuffles and deals."
 
 ---
+
+## How real systems solve this
+
+Card systems stay maintainable when the generic deck layer is boring: immutable `Card`, mutable `Deck` or `Shoe`, and a shuffle/deal API. Blackjack should not leak into `Deck`; the game layer owns hand valuation, dealer policy, round state, and settlement.
+
+Shuffling is the first correctness trap. Use Fisher-Yates: walk from the end of the list toward the front and swap each position with a uniformly selected earlier-or-same position. Repeatedly swapping each card with a random index over the full deck looks plausible, but it is biased and should be called out in an interview.
+
+Blackjack hand value is contextual because aces are soft or hard depending on the whole hand. Count every ace as 1 first, then upgrade aces by +10 while the total stays at or below 21. Blackjack itself is also not just total 21; it is an ace plus a ten-value card on the first two cards.
+
+Dealer behavior belongs behind a policy. The default in this walkthrough is dealer stands on 17, but the same state machine can support a different house rule without rewriting `BlackjackGame`. The round transitions remain: deal, player turn, dealer turn, settle.
+
+## Reference implementation
+
+This snippet focuses on the core evaluator: best total, soft-hand detection, bust, and first-two-card blackjack. It keeps card modeling minimal so the ace rules are obvious.
+
+```python
+from dataclasses import dataclass
+from enum import Enum
+
+class Rank(Enum):
+    TWO = 2; THREE = 3; FOUR = 4; FIVE = 5; SIX = 6; SEVEN = 7
+    EIGHT = 8; NINE = 9; TEN = 10; JACK = 10; QUEEN = 10; KING = 10; ACE = 1
+
+@dataclass(frozen=True)
+class Card:
+    rank: Rank
+    suit: str
+
+class HandValue:
+    @staticmethod
+    def total(cards: list[Card]) -> int:
+        total = sum(card.rank.value for card in cards)
+        aces = sum(1 for card in cards if card.rank is Rank.ACE)
+        while aces and total + 10 <= 21:
+            total += 10
+            aces -= 1
+        return total
+
+    @staticmethod
+    def is_soft(cards: list[Card]) -> bool:
+        total = sum(card.rank.value for card in cards)
+        aces = sum(1 for card in cards if card.rank is Rank.ACE)
+        return aces > 0 and total + 10 <= 21
+
+    @staticmethod
+    def is_bust(cards: list[Card]) -> bool:
+        return HandValue.total(cards) > 21
+
+    @staticmethod
+    def is_blackjack(cards: list[Card]) -> bool:
+        if len(cards) != 2:
+            return False
+        ranks = {card.rank for card in cards}
+        has_ace = Rank.ACE in ranks
+        has_ten_value = any(card.rank.value == 10 for card in cards)
+        return has_ace and has_ten_value
+```
+
+## Complexity and trade-offs
+
+| Operation | Complexity | Notes |
+|---|---:|---|
+| Fisher-Yates shuffle | O(n) | Unbiased when each swap range is chosen correctly. |
+| Deal one card | O(1) | Usually pop from end/top of deck. |
+| Hand valuation | O(h) | `h` is cards in hand; ace upgrades are bounded by ace count. |
+| Dealer turn | O(k · h) | `k` dealer draws; each check revalues the hand. |
+| Round settlement | O(h) | Compare normalized totals after bust/blackjack checks. |
+
+- Recomputing hand value is safer than storing mutable totals because each new card can change ace interpretation.
+- A `Shoe` can replace `Deck` for multiple decks while preserving `dealOne()`.
+- `DealerPolicy` keeps house rules local; it should not be hard-coded throughout the state machine.
+- Betting, splits, double-down, and insurance multiply state. Add them after the base round is correct.
+
+## Further reading
+
+- [Fisher–Yates shuffle](https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle) — standard unbiased shuffle for an in-memory deck.
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — shuffle and dealer policies vary independently from game state.
+- [State](https://refactoring.guru/design-patterns/state) — clean framing for Betting, PlayerTurn, DealerTurn, and Settle transitions.
+- *Design Patterns* — GoF — canonical pattern reference for Strategy and State vocabulary.
 
 ## What separated a pass from a fail here
 - You separated generic cards from Blackjack-specific rules.

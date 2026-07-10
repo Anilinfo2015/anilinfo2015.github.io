@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design Snake and Ladder"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~15 minutes"
+readingTime: "~20 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Snake and Ladder", "Strategy Pattern", "Game Loop", "OOD"]
+topics: ["Low-Level Design", "Snake and Ladder", "Strategy Pattern", "Markov Chains", "Game Loop", "OOD"]
 ---
 
 # LLD Walkthrough: Design Snake and Ladder
@@ -301,6 +301,89 @@ If you have a few seconds, call out the one lock:
 > "If this were served over an API, I would serialize `playTurn()` per game ID so two clients cannot advance the same game concurrently."
 
 ---
+
+## How real systems solve this
+
+A production version still starts with the same turn loop: pick current player, roll dice, compute a candidate cell, apply at most the configured jump behavior, decide whether the game finished, then rotate turn. The key is keeping each rule explicit. Exact-roll win, bounce-back overshoot, extra turn on six, and chained jumps should be policies, not hidden branches scattered through `Game`.
+
+The board should treat snakes and ladders uniformly as a jump map. A map from start cell to destination gives O(1) jump lookup and enforces the useful invariant: at most one jump starts from a cell. Whether a jump goes upward or downward is metadata for validation and display; movement only needs `from -> to`.
+
+`Dice` is a Strategy seam for both testing and variants. A fair die, seeded die, fixed die, or loaded die can all implement the same `roll()` method. That keeps deterministic tests from reaching into random state and keeps the game loop honest.
+
+The deeper analytical follow-up is that the board induces a Markov process. If each non-final cell is a transient state and the final cell is absorbing, expected moves can be computed from the absorbing Markov chain using the fundamental matrix `N = (I - Q)^-1`. You do not need that machinery for the LLD implementation, but naming it shows you understand how to analyze board design beyond simulation.
+
+## Reference implementation
+
+This focused Python snippet implements one complete turn: exact-roll overshoot, jump lookup, winner detection, and turn rotation. Randomness is injected through `dice`.
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Player:
+    name: str
+    position: int = 1
+
+class SnakeLadderGame:
+    def __init__(self, size: int, players: list[Player], jumps: dict[int, int], dice):
+        if size <= 1 or not players:
+            raise ValueError("game needs a board and players")
+        for start, end in jumps.items():
+            if not (1 < start < size and 1 <= end <= size) or start == end:
+                raise ValueError("invalid jump")
+        self.size = size
+        self.players = players
+        self.jumps = jumps
+        self.dice = dice
+        self.turn = 0
+        self.winner: Player | None = None
+
+    def play_turn(self) -> dict:
+        if self.winner:
+            raise ValueError("game already finished")
+        player = self.players[self.turn]
+        start = player.position
+        roll = self.dice.roll()
+        if roll < 1:
+            raise ValueError("dice roll must be positive")
+
+        candidate = start + roll
+        jump_from = None
+        if candidate <= self.size:
+            jump_from = candidate if candidate in self.jumps else None
+            player.position = self.jumps.get(candidate, candidate)
+        final = player.position
+
+        if final == self.size:
+            self.winner = player
+        else:
+            self.turn = (self.turn + 1) % len(self.players)
+        return {"player": player.name, "roll": roll, "from": start,
+                "to": final, "jump_from": jump_from,
+                "winner": self.winner.name if self.winner else None}
+```
+
+## Complexity and trade-offs
+
+| Operation | Complexity | Notes |
+|---|---:|---|
+| Dice roll | O(1) | Strategy decides fairness or determinism. |
+| Candidate movement | O(1) | Single arithmetic step. |
+| Jump lookup | O(1) average | Map keyed by landing cell. |
+| Turn rotation | O(1) | Modulo index when all players remain active. |
+| Expected-move analysis | Matrix operation | Uses absorbing Markov chain math, not the live turn loop. |
+
+- A jump map is simpler than `SnakeCell`/`LadderCell` subclasses and makes validation centralized.
+- Applying one jump keeps the turn easy to reason about; chained jumps need a visited set or cycle rejection.
+- Exact-roll overshoot is a rule choice. Keep it explicit so bounce-back or allow-overshoot variants can replace it.
+- Markov analysis is valuable for board balancing, but it should remain offline from the interactive game engine.
+
+## Further reading
+
+- [Strategy](https://refactoring.guru/design-patterns/strategy) — dice, win rules, and turn policies are clean Strategy seams.
+- [State](https://refactoring.guru/design-patterns/state) — useful vocabulary for NotStarted, Running, and Finished transitions.
+- [Absorbing Markov chain](https://en.wikipedia.org/wiki/Absorbing_Markov_chain) — mathematical basis for expected moves to finish.
+- *Head First Design Patterns* — Freeman & Robson — approachable treatment of Strategy for interview explanations.
 
 ## What separated a pass from a fail here
 - You modeled snakes and ladders uniformly as `Jump`, avoiding duplicate code.

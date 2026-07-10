@@ -1,10 +1,10 @@
 ---
 title: "Clarifying Requirements and Scoping an LLD Problem (How to Not Rabbit-Hole)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~12 minutes"
+readingTime: "~14 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Requirements", "Scoping", "Interview Technique"]
+topics: ["Low-Level Design", "Requirements", "Scoping", "Interview Technique", "Rate Limiting"]
 ---
 
 # Clarifying Requirements and Scoping an LLD Problem
@@ -106,6 +106,60 @@ They will. "Okay, now make pricing dynamic." This is not a failure of your scopi
 3. If there's no seam, introduce one in one sentence rather than rewriting.
 
 A tight initial scope is what *lets* you absorb expansions gracefully. Candidates who tried to build everything up front have no slack left when the real curveball arrives.
+
+---
+
+## A worked example
+
+Prompt: **"Design a rate limiter."** A weak opening is "I'll use token bucket" and then disappearing into counters. A stronger opening fences the problem first:
+
+> **Candidate:** "What is the primary flow: deciding whether a request is allowed for a key?"
+>
+> **Interviewer:** "Yes, `allow(userId)` is enough."
+>
+> **Candidate:** "Single process or distributed across nodes?"
+>
+> **Interviewer:** "Start single process."
+>
+> **Candidate:** "Should the algorithm be fixed, or should I leave room for fixed-window vs token-bucket?"
+>
+> **Interviewer:** "Leave room; token bucket is fine as the first implementation."
+>
+> **Candidate:** "Do you care about persistence or restart behavior?"
+>
+> **Interviewer:** "No."
+>
+> **Candidate:** "Any need for per-endpoint rules, or one rule per key?"
+>
+> **Interviewer:** "One rule per key."
+
+Now write the fence:
+
+```text
+IN SCOPE
+- allow(key): returns allowed/denied for a request
+- single-process correctness
+- one pluggable limiting algorithm, first implementation token bucket
+
+OUT OF SCOPE
+- distributed coordination
+- persistent counters
+- per-endpoint policy management
+- real HTTP middleware
+```
+
+Scope sentence: **"I'll design a single-node rate limiter with a narrow `allow(key)` API and a pluggable algorithm seam; distributed coordination and persistence are out unless you pull them in later."**
+
+Notice the win: the algorithm is no longer the whole interview. It is one implementation behind the seam, and the rest of the design can proceed.
+
+---
+
+## Further reading
+
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — especially useful for turning scope into single-responsibility classes and dependency-inverted seams.
+- [Martin Fowler bliki](https://martinfowler.com/bliki/) — design vocabulary for talking about boundaries, abstractions, and trade-offs crisply.
+- [Refactoring](https://refactoring.guru/refactoring) — useful when a scope fence reveals that a proposed model is doing too much.
+- *Clean Code* — Robert C. Martin — practical guidance for small, intention-revealing names and functions.
 
 ---
 

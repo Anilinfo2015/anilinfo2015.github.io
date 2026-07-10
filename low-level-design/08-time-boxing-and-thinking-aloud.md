@@ -1,7 +1,7 @@
 ---
 title: "Time-Boxing and Thinking Aloud: Running the LLD Clock Like a Pro"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~11 minutes"
+readingTime: "~13 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Time Management", "Communication", "Interview Technique"]
@@ -94,6 +94,35 @@ flowchart LR
 ```
 
 The rhythm is: announce the plan → work each stage while narrating decisions and trade-offs → enforce the time box and advance even when imperfect → check heading at the joints → protect the final summary. It feels almost boringly systematic — and that's the point. The systematic candidate finishes with a complete, clearly-reasoned design. The improviser produces a brilliant fragment and an interviewer who couldn't follow it.
+
+---
+
+## A worked example
+
+Prompt: "Design a parking lot." You have vehicles, spots, tickets, and the public API. The interviewer asks about concurrent entry at the same level.
+
+A strong think-aloud response is short:
+
+> "I'll keep this bounded: the contended resource is the free spot set for a level, not the entire lot. For correctness I'll use a per-level lock around find-and-claim; that lets two different levels proceed independently, and if it becomes hot we can shard by spot type."
+
+Then you immediately return to the flow:
+
+> "So the entry flow is: `ParkingLot.park(vehicle)` selects a level, the level claims one compatible spot under its lock, then the lot issues a ticket. I won't hold the lock while printing or charging; the protected section is just choosing and marking the spot."
+
+That answer demonstrates judgment because it does four things quickly: it names the race, chooses a mechanism, states the trade-off, and keeps the design moving. It also preserves the clock. You delivered the concurrency follow-up and still have time to show exit, fee calculation, and summary.
+
+If you catch yourself going silent, narrate the pause:
+
+> "Give me ten seconds to choose the lock boundary; I want it narrow enough that level A does not block level B."
+
+Now the interviewer sees active reasoning instead of a stall.
+
+## Further reading
+
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — vocabulary for explaining design choices and trade-offs quickly.
+- [Martin Fowler bliki](https://martinfowler.com/bliki/) — short design essays that model crisp technical narration.
+- *Clean Code* — Robert C. Martin — useful for naming, small responsibilities, and making design intent readable.
+- *A Philosophy of Software Design* — John Ousterhout — practical framing for reducing complexity while communicating design clearly.
 
 ---
 

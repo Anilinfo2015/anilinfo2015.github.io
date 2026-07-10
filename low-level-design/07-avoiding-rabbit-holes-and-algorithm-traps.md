@@ -1,7 +1,7 @@
 ---
 title: "Avoiding Rabbit Holes and Algorithm Traps in LLD Interviews"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~12 minutes"
+readingTime: "~14 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Interview Technique", "Time Management", "Anti-patterns"]
@@ -98,6 +98,31 @@ Here's the reframe that fixes most cases: **depth in LLD should be interviewer-p
 ## When the rabbit hole *is* the interview
 
 Occasionally the interviewer genuinely wants the algorithm ("I specifically want you to implement the LRU eviction correctly"). The difference is they'll *tell* you and *stay engaged* while you do it. That's not a rabbit hole — that's the assignment. The escape maneuver still helps: do the focused thing they asked, state its complexity, and then resurface to the broader design. The skill is the same: match depth to demand.
+
+---
+
+## A worked example
+
+Take an LRU cache prompt. The trap is spending 15 minutes proving pointer invariants: which node moves first, whether the tail is evicted before or after the map delete, what happens when capacity is one. Those details matter in implementation, but the LLD interview is first scoring whether you built a usable cache abstraction with the right seam.
+
+The strong version is one sentence plus an interface boundary:
+
+> "I'll implement LRU with a hashmap plus doubly-linked list so `get` and `put` are O(1): the map finds the node, and the list maintains recency by moving touched nodes to the front. I'll hide eviction behind `EvictionPolicy`, start with LRU, and only go into pointer cases if you want implementation detail."
+
+Then move to the design:
+
+- `Cache.get(key)` asks storage for the value and notifies `EvictionPolicy.recordAccess(key)`.
+- `Cache.put(key, value)` writes the value; if capacity is exceeded, it asks `EvictionPolicy.evictKey()`.
+- `LRUEvictionPolicy` owns the map+list detail; the cache service does not.
+
+If the interviewer says, "Yes, implement LRU," then you go deeper. If they nod, you keep the interview on the service API, failure behavior, concurrency, and follow-ups. The same pattern works for rate limiters: "Token bucket allows bursts up to capacity and refills over time; I'll hide the math behind `RateLimitPolicy` and start single-node." That is enough unless they explicitly pull you into accuracy or distributed counters.
+
+## Further reading
+
+- [Design Patterns](https://refactoring.guru/design-patterns) — useful catalog for naming seams such as Strategy without over-explaining them.
+- [Martin Fowler bliki](https://martinfowler.com/bliki/) — concise essays on design trade-offs, refactoring, and when abstractions help.
+- *Design Patterns* — GoF — classic reference for Strategy and other patterns that keep hard algorithms behind replaceable boundaries.
+- *A Philosophy of Software Design* — John Ousterhout — strong framing for reducing complexity by hiding deep implementation details behind simple interfaces.
 
 ---
 

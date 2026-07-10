@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design a Text Editor with Undo and Redo"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~16 minutes"
+readingTime: "~22 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Text Editor", "Command Pattern", "Memento Pattern", "OOD"]
+topics: ["Low-Level Design", "Text Editor", "Command Pattern", "Memento Pattern", "Rope", "Piece Table", "OOD"]
 ---
 
 # LLD Walkthrough: Design a Text Editor with Undo and Redo
@@ -308,6 +308,91 @@ If there is time, name the tests:
 End there. More buffer talk will usually make the answer worse.
 
 ---
+
+## How real systems solve this
+
+Real editors protect the same invariant as the interview design: every user-visible mutation must pass through one owner that can record undo metadata. The Command pattern fits small edits because each edit carries its inverse: insert can delete the inserted range; delete can store and restore the removed text. Memento is the safer alternative when the operation is complex enough that inverse logic is risky, but snapshots cost more memory unless they are incremental.
+
+The two-stack model is still the core mental model. Applying a command executes it, pushes it onto undo, and clears redo. Undo moves the command to redo after reversing it. Redo executes the same command again and moves it back to undo. A new edit after undo invalidates the abandoned future.
+
+The buffer is where production editors diverge from the naive interview version. A plain string is simple but O(n) for middle inserts and deletes. Gap buffers, ropes, and piece tables keep edits cheaper for large documents; ropes provide O(log n) splits and concatenations, and VS Code has written about using a piece-tree text buffer for performance.
+
+Collaborative editing is a distributed extension, not a bigger undo stack. Systems like Google Docs need Operational Transformation or CRDT-style merging so concurrent inserts and deletes converge across clients. Keep that as a separate synchronization layer above or beside the local command history.
+
+## Reference implementation
+
+This is the core undo/redo mechanism with reversible commands and redo invalidation. The buffer is intentionally a simple list-backed string facade; production storage can replace it behind the same methods.
+
+```python
+from dataclasses import dataclass
+
+class TextBuffer:
+    def __init__(self, text: str = ""):
+        self._chars = list(text)
+    def insert(self, pos: int, text: str) -> None:
+        self._chars[pos:pos] = list(text)
+    def delete(self, start: int, end: int) -> str:
+        removed = ''.join(self._chars[start:end])
+        del self._chars[start:end]
+        return removed
+
+class Command:
+    def execute(self) -> None: raise NotImplementedError
+    def undo(self) -> None: raise NotImplementedError
+
+@dataclass
+class InsertCommand(Command):
+    buffer: TextBuffer
+    pos: int
+    text: str
+    def execute(self) -> None: self.buffer.insert(self.pos, self.text)
+    def undo(self) -> None: self.buffer.delete(self.pos, self.pos + len(self.text))
+
+@dataclass
+class DeleteCommand(Command):
+    buffer: TextBuffer
+    start: int
+    end: int
+    removed: str = ""
+    def execute(self) -> None: self.removed = self.buffer.delete(self.start, self.end)
+    def undo(self) -> None: self.buffer.insert(self.start, self.removed)
+
+class CommandHistory:
+    def __init__(self):
+        self.undo_stack: list[Command] = []
+        self.redo_stack: list[Command] = []
+    def apply(self, command: Command) -> None:
+        command.execute(); self.undo_stack.append(command); self.redo_stack.clear()
+    def undo(self) -> None:
+        if self.undo_stack:
+            command = self.undo_stack.pop(); command.undo(); self.redo_stack.append(command)
+    def redo(self) -> None:
+        if self.redo_stack:
+            command = self.redo_stack.pop(); command.execute(); self.undo_stack.append(command)
+```
+
+## Complexity and trade-offs
+
+| Operation | Naive string/list buffer | Rope/piece-table style buffer | History cost |
+|---|---:|---:|---:|
+| Insert in middle | O(n) | Often logarithmic or chunk-oriented | Store command metadata |
+| Delete range | O(n) | Often logarithmic or chunk-oriented | Store deleted text |
+| Undo insert | O(n) with naive buffer | Buffer-dependent | Reuse command |
+| Undo delete | O(n) with naive buffer | Buffer-dependent | Reinsert stored text |
+| Snapshot undo | O(n) per snapshot | Can be incremental | Simpler restore logic |
+
+- Command is memory-efficient for small edits, but each command must store enough inverse data to be honest.
+- Memento snapshots are simpler for complex transformations, but full snapshots are expensive for large documents.
+- Buffer choice should be hidden behind `TextBuffer`; undo logic should not know whether storage is a rope, gap buffer, or piece tree.
+- Collaborative editing requires OT or CRDTs because local undo/redo does not resolve concurrent remote edits by itself.
+
+## Further reading
+
+- [Command](https://refactoring.guru/design-patterns/command) — core pattern for reversible editor actions.
+- [Memento](https://refactoring.guru/design-patterns/memento) — snapshot-based alternative for undo/redo.
+- [Rope data structure](https://en.wikipedia.org/wiki/Rope_%28data_structure%29) — background on tree-shaped text buffers with efficient splits and concatenations.
+- [Text Buffer Reimplementation in Visual Studio Code](https://code.visualstudio.com/blogs/2018/03/23/text-buffer-reimplementation) — practical piece-tree discussion for large editor buffers.
+- *Design Patterns* — GoF — canonical treatment of Command and Memento.
 
 ## What separated a pass from a fail here
 

@@ -1,10 +1,10 @@
 ---
 title: "LLD Walkthrough: Design Splitwise / Expense Sharing (the 45-minute way)"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~17 minutes"
+readingTime: "~23 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Splitwise", "Strategy Pattern", "Ledger", "OOD"]
+topics: ["Low-Level Design", "Splitwise", "Strategy Pattern", "Ledger", "Debt Simplification", "OOD"]
 ---
 
 # LLD Walkthrough: Design Splitwise / Expense Sharing
@@ -272,6 +272,82 @@ Notice what we did not do: no payment gateway, no social feed, no minimum-settle
 > "The model has eight core objects. `ExpenseService` is the public entry point, `SplitStrategy` handles equal/exact/percent variation, and `BalanceSheet` owns current pairwise debts. Adding an expense validates members, computes splits that sum exactly to the total, stores an expense, and updates net balances. Debt simplification is an optional read-side service using a greedy debtor/creditor match. Next I would add persistence transactions and tests for rounding."
 
 That is the ending you want: small model, working write path, clean seam, named edges.
+
+---
+
+## How real systems solve this
+
+Expense sharing is a ledger problem before it is a graph problem. A durable expense record says who paid, how much, for whom, and which split strategy produced the shares. The current balance sheet is then a projection of that ledger, not the only source of truth.
+
+Split calculation is a textbook Strategy seam. Equal, exact, percentage, and shares-based splits all implement the same contract: validate the input and return per-user amounts that sum exactly to the total. Use integer minor units, not floating point, and make rounding deterministic so replaying the ledger produces the same balances.
+
+Balances form a directed graph: if A paid for B, B owes A. For display and settlement suggestions, the system can net pairwise edges and then simplify the group with the standard greedy debtor/creditor heuristic: repeatedly match the largest debtor to the largest creditor and emit one settlement. This reduces the number of transactions in practice; exact optimal minimization is NP-hard, so the greedy method is the right interview-level trade-off.
+
+The interview simplification can update balances in memory. The production shape should still preserve the ledger first, update balance projections transactionally, and keep simplification as a read-side service so it never corrupts the accounting record.
+
+## Reference implementation
+
+The snippet below implements the greedy minimize-cash-flow settlement. It consumes net balances where negative means the user owes money and positive means the user should receive money.
+
+```python
+from dataclasses import dataclass
+import heapq
+
+@dataclass(frozen=True)
+class Settlement:
+    payer: str
+    receiver: str
+    amount_cents: int
+
+def minimize_cash_flow(net: dict[str, int]) -> list[Settlement]:
+    debtors: list[tuple[int, str]] = []
+    creditors: list[tuple[int, str]] = []
+
+    for user_id, amount in net.items():
+        if amount < 0:
+            heapq.heappush(debtors, (amount, user_id))       # most negative first
+        elif amount > 0:
+            heapq.heappush(creditors, (-amount, user_id))    # max heap via negative
+
+    settlements: list[Settlement] = []
+    while debtors and creditors:
+        debt_amount, debtor = heapq.heappop(debtors)
+        credit_amount, creditor = heapq.heappop(creditors)
+
+        pay = min(-debt_amount, -credit_amount)
+        settlements.append(Settlement(debtor, creditor, pay))
+
+        debt_amount += pay
+        credit_amount += pay
+        if debt_amount < 0:
+            heapq.heappush(debtors, (debt_amount, debtor))
+        if credit_amount < 0:
+            heapq.heappush(creditors, (credit_amount, creditor))
+
+    return settlements
+```
+
+## Complexity and trade-offs
+
+| Operation | Typical cost | Notes |
+|---|---:|---|
+| Equal split | `O(n)` | Deterministic rounding across `n` participants. |
+| Exact/percent validation | `O(n)` | Sum shares before touching the ledger. |
+| Add expense to balances | `O(n)` | Update payer-to-participant debts for `n` splits. |
+| Read pairwise balances | `O(e)` | `e` non-zero directed balance edges. |
+| Greedy settlement | `O(u log u)` | `u` users with non-zero net balances. |
+
+- Ledger-first design is auditable, but requires projection repair or replay if balance rows drift.
+- Pairwise balances answer "who owes whom" directly, while net balances are better for settlement suggestions.
+- Greedy simplification is simple and useful, but it is a heuristic rather than a proof of globally minimal payments.
+- Integer cents avoid floating-point bugs, but every strategy must own deterministic rounding rules.
+
+## Further reading
+
+- [Refactoring Guru: Strategy](https://refactoring.guru/design-patterns/strategy) — split-type variation behind a common interface.
+- *Design Patterns* — GoF (Gamma, Helm, Johnson, Vlissides) — background for Strategy and other object seams used in the model.
+- *Effective Java* — Joshua Bloch — value-object and money-handling implementation discipline.
+- *Designing Data-Intensive Applications* — Martin Kleppmann — ledger, projection, and consistency concepts for durable financial records.
 
 ---
 

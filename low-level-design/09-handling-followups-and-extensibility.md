@@ -1,7 +1,7 @@
 ---
 title: "Handling Follow-ups and Extensibility: Turning Curveballs Into Points"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~12 minutes"
+readingTime: "~14 minutes"
 difficulty: Advanced
 date: 2026-07-10
 topics: ["Low-Level Design", "Extensibility", "Open-Closed Principle", "Interview Technique"]
@@ -98,6 +98,63 @@ The mirror-image mistake: building seams for *every imaginable* future change up
 ## Handling the "I don't think that works" pushback
 
 Sometimes the interviewer challenges your design directly ("wouldn't that double-book?"). This is a gift — they're showing you the exact thing they want addressed. Do not get defensive. Engage: "Let me trace it… yes, if two threads hit this between check and claim, it double-books; I'd make the check-and-claim atomic under the seat lock." Fixing a flaw *with* the interviewer, out loud, scores better than a flawless design delivered defensively. The willingness to find and fix your own bug on the fly is a strong senior trait.
+
+---
+
+## A worked example
+
+You designed a parking lot with:
+
+- `FeeCalculator` depending on a `PricingStrategy`
+- `Ticket` carrying entry time, exit time, vehicle type, and spot type
+- `PaymentService` consuming the amount returned by the calculator
+
+The interviewer asks, "Now weekend pricing is different." The weak answer is to edit `calculateFee()` with `if (day == SATURDAY || day == SUNDAY)`. That works once, then collapses when they ask for holiday pricing, event pricing, or member discounts.
+
+The bounded extensibility answer:
+
+> "That is a new `PricingStrategy`, not a rewrite. `FeeCalculator` already depends on the strategy interface; I'll add `WeekendPricingStrategy` and choose it based on the ticket timestamp or a small strategy selector. The payment flow and ticket model stay unchanged."
+
+Sketch only the delta:
+
+```java
+interface PricingStrategy {
+    int priceCents(Ticket ticket);
+}
+
+final class Ticket {
+    private final int durationHours;
+
+    Ticket(int durationHours) {
+        this.durationHours = durationHours;
+    }
+
+    int durationHours() {
+        return durationHours;
+    }
+}
+
+final class WeekendPricingStrategy implements PricingStrategy {
+    private final int centsPerHour;
+
+    WeekendPricingStrategy(int centsPerHour) {
+        this.centsPerHour = centsPerHour;
+    }
+
+    public int priceCents(Ticket ticket) {
+        return ticket.durationHours() * centsPerHour;
+    }
+}
+```
+
+The point is not the pricing constant; the point is the shape of the change: one implementation behind an existing seam, zero edits to the checkout flow. If the follow-up were "add push notifications," the same answer is a `NotificationChannel` adapter. If it were "add LFU eviction," it is a new `EvictionPolicy`. Good seams convert curveballs into additive changes.
+
+## Further reading
+
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — especially Open/Closed and Dependency Inversion for follow-up-friendly designs.
+- [Design Patterns](https://refactoring.guru/design-patterns) — quick reference for Strategy, Adapter, and State as common LLD seams.
+- *Design Patterns* — GoF — deeper catalog of the extension patterns interviewers expect you to recognize.
+- *Effective Java* — Joshua Bloch — pragmatic guidance on interfaces, composition, and avoiding unnecessary inheritance.
 
 ---
 

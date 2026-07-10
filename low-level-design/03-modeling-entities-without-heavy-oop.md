@@ -1,10 +1,10 @@
 ---
 title: "Modeling Entities Without Heavy OOP: Responsibilities and Composition First"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~13 minutes"
+readingTime: "~15 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "OOD", "Composition", "Domain Modeling"]
+topics: ["Low-Level Design", "OOD", "Composition", "Domain Modeling", "SOLID"]
 ---
 
 # Modeling Entities Without Heavy OOP
@@ -107,6 +107,67 @@ That's it. No taxonomy hunt, no abstract-base debate. You'll finish with a model
 - **No anemic bag-of-getters.** If every object is just fields with getters and all logic sits in one service, you've written procedural code in a costume. Push behavior onto the objects that own the data.
 
 You can mention these principles by name in one line each; you don't need to lecture. Applying them quietly is what makes the model read as "clean" without you spending words defending it.
+
+---
+
+## A worked example
+
+Parking lot prompts tempt candidates into a vehicle taxonomy:
+
+```text
+Vehicle
+  MotorVehicle
+    Car
+    Van
+    Truck
+  TwoWheeler
+    Motorcycle
+```
+
+That hierarchy looks OOP-ish, but in the scoped problem those classes usually differ only by **size/category**, not behavior. A flatter model is easier to extend and easier to use in the flow:
+
+```java
+enum VehicleType { MOTORCYCLE, CAR, TRUCK }
+
+final class Vehicle {
+    private final String plate;
+    private final VehicleType type;
+
+    Vehicle(String plate, VehicleType type) {
+        this.plate = plate;
+        this.type = type;
+    }
+
+    VehicleType type() {
+        return type;
+    }
+}
+
+final class ParkingSpot {
+    private final VehicleType fits;
+    private Vehicle parked;
+
+    ParkingSpot(VehicleType fits) {
+        this.fits = fits;
+    }
+
+    boolean canFit(Vehicle vehicle) {
+        return parked == null && fits == vehicle.type();
+    }
+}
+```
+
+Now the responsibility is crisp: `Vehicle` identifies what arrived; `ParkingSpot` decides whether it can hold it. If the interviewer later says trucks require a different fare calculation, that behavior belongs in `FareStrategy`, not in `Truck extends Vehicle`. If trucks need genuinely different behavior across many flows, then polymorphism has earned its place. Until then, Effective Java's "favor composition over inheritance" keeps the model small and honest.
+
+---
+
+## Further reading
+
+- [SOLID](https://en.wikipedia.org/wiki/SOLID) — grounding for single responsibility and dependency inversion in small models.
+- [Design Patterns](https://refactoring.guru/design-patterns) — useful for placing polymorphism at behavior seams instead of entity taxonomies.
+- [Refactoring](https://refactoring.guru/refactoring) — helps spot type-code, inheritance, and responsibility smells.
+- *Effective Java* — Joshua Bloch — includes the practical "favor composition over inheritance" advice.
+- *Design Patterns* — GoF (Gamma, Helm, Johnson, Vlissides) — the original "program to an interface" vocabulary.
 
 ---
 
