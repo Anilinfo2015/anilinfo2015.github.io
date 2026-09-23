@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "Requirements", "Scoping", "Interview Technique", "
 
 > Self-contained. This article is about the first 7 minutes of an LLD interview — the minutes that decide whether you finish or drown.
 
+**Stage-focused coaching, not a separate design framework:** use this within [1. Requirements](interview-template.html#requirements), then revisit the acceptance criteria in the final check within [5. Deep dives](interview-template.html#deep-dives). Keep functional requirements, nonfunctional requirements, and out of scope nested under Requirements. The timings here are illustrative local practice budgets, not guidance attributed to Hello Interview.
+
 Most LLD failures are decided before any class is drawn. The prompt is deliberately underspecified ("design a ride-hailing system"), and the candidate either (a) starts modeling immediately and builds the wrong thing, or (b) asks vague questions that produce vague answers and still builds the wrong thing. If you have failed LLD despite being strong at system design, this stage is very likely your leak. In HLD, ambiguity invites breadth and you get rewarded for exploring. In LLD, ambiguity is a **trap**: every extra "what if" you invent is 5 minutes you will not have for the model.
 
 The goal of clarification is not to understand the problem fully. It is to **carve out a version of the problem you can finish cleanly in 40 minutes, and get the interviewer to agree to it in writing.**
@@ -19,22 +21,26 @@ The goal of clarification is not to understand the problem fully. It is to **car
 
 ## The scope-fence: your single most important artifact
 
-Before modeling anything, produce two lists on the board:
+Before modeling anything, put the scope fence and constraints under Requirements on the board:
 
 ```text
-IN SCOPE
-- <core use case 1>
-- <core use case 2>
-- <maybe a third>
+REQUIREMENTS
+  Functional (IN SCOPE)
+  - <core use case 1>
+  - <core use case 2>
+  - <maybe a third>
 
-OUT OF SCOPE (explicit)
-- <the tempting thing you are deliberately NOT doing>
-- <the other tempting thing>
+  Nonfunctional
+  - <correctness, thread-safety, persistence, or capacity constraint>
+
+  OUT OF SCOPE (explicit)
+  - <the tempting thing you are deliberately NOT doing>
+  - <the other tempting thing>
 ```
 
 This "fence" does three jobs:
 
-1. **It commits the interviewer.** Once they nod at your IN/OUT lists, they have told you what to build. You are no longer guessing what they want.
+1. **It commits the interviewer.** Once they nod at your IN/OUT lists and constraints, they have told you what to build. You are no longer guessing what they want.
 2. **It gives you a stop sign.** Every time you feel the pull to add a feature, you glance at the OUT list. If it's there, you stop. The fence does your willpower for you.
 3. **It signals seniority.** Ruthless scoping is exactly what staff engineers do on real projects. Interviewers read it as maturity.
 
@@ -45,7 +51,7 @@ This "fence" does three jobs:
 Junior candidates ask trivia ("what language?"). Strong candidates ask questions whose answers **fork the design**. Prioritize these four categories:
 
 - **The primary flow.** "If you could only see me nail one use case, which is it?" This single question prevents you from building the wrong thing. Interviewers almost always have a specific flow in mind.
-- **Single-process vs distributed.** This one answer decides whether concurrency, persistence, and network failure are even on the table. Getting it wrong wastes 15 minutes. Default to single-process unless told otherwise, and *say* you're defaulting.
+- **Execution and storage constraints.** Ask single-process vs distributed, whether calls can overlap, and whether state must survive restart. A single process can still need thread-safety and persistence. Default to single-process unless told otherwise, and *say* you're defaulting.
 - **Model depth vs breadth.** "Do you want a deep model of the core with pluggable extensions, or coverage of many features shallowly?" Almost always they want depth on the core.
 - **Scale sensitivity.** "Roughly how many X? Enough that data-structure choice matters, or is correctness the focus?" This tells you whether to care about the algorithm at all (usually you shouldn't).
 
@@ -62,7 +68,7 @@ flowchart LR
     A[Restate the prompt<br/>in one sentence] --> B[Ask primary flow]
     B --> C[Ask 2-3 forking<br/>questions]
     C --> D[State defaults<br/>for the rest]
-    D --> E[Write IN / OUT<br/>and confirm]
+    D --> E[Write functional / nonfunctional<br/>requirements + OUT scope<br/>and confirm]
 ```
 
 Concretely:
@@ -80,7 +86,7 @@ Once the fence is set, convert the IN-scope items into concrete, testable statem
 - Vague: "users can split expenses."
 - Concrete: "a user adds an expense to a group; it can be split equally, by exact amounts, or by percentage; the system tracks who owes whom."
 
-The concrete version already hints at the model (`Expense`, `Group`, a split *strategy*) — good requirements pull the design out of you. Write 3–5 of these and treat them as your acceptance criteria. In the wrap-up, you'll check off which ones you covered; that closes the loop and reads as rigor.
+The concrete version already hints at the model (`Expense`, `Group`, a split *strategy*) — good requirements pull the design out of you. Write 3–5 of these and treat them as your acceptance criteria. In the final check within Deep dives, you'll check off which ones you covered; that closes the loop and reads as rigor.
 
 ---
 
@@ -136,16 +142,20 @@ Prompt: **"Design a rate limiter."** A weak opening is "I'll use token bucket" a
 Now write the fence:
 
 ```text
-IN SCOPE
-- allow(key): returns allowed/denied for a request
-- single-process correctness
-- one pluggable limiting algorithm, first implementation token bucket
+REQUIREMENTS
+  Functional (IN SCOPE)
+  - allow(key): returns allowed/denied for a request
+  - one pluggable limiting algorithm, first implementation token bucket
 
-OUT OF SCOPE
-- distributed coordination
-- persistent counters
-- per-endpoint policy management
-- real HTTP middleware
+  Nonfunctional
+  - single-process correctness; confirm whether calls can overlap
+  - in-memory counters; no durability guarantee
+
+  OUT OF SCOPE
+  - distributed coordination
+  - persistent counters
+  - per-endpoint policy management
+  - real HTTP middleware
 ```
 
 Scope sentence: **"I'll design a single-node rate limiter with a narrow `allow(key)` API and a pluggable algorithm seam; distributed coordination and persistence are out unless you pull them in later."**

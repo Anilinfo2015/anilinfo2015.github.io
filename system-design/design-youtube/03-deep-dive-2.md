@@ -2,6 +2,10 @@
 
 A creator uploads a 4K video to YouTube. The original file is 30 GB, recorded from a RED camera. YouTube's system receives this file and must convert it into dozens of versions: 480p for mobile on slow networks, 1080p for desktop, 2160p for big screens, 4320p for future TVs. Each quality exists in three codecs: H.264 (universal), VP9 (modern browsers), and AV1 (emerging, extremely efficient).
 
+> **Reader path — 5. Deep dives (transcoding economics):** [Separate scoped video-streaming walkthrough](../interview-questions/video-streaming.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Analytics](02-deep-dive-1.md) → transcoding trade-offs here → [metadata consistency](04-deep-dive-3.md). This broader video-platform expansion is distinct from the [Top-K baseline](01-foundations.md); encoding costs inform codec decisions, not a separate delivery stage.
+
 This is transcoding: the process of converting one video format into many. At 500,000 hours uploaded daily, YouTube runs 2.5-5 million transcode jobs per day. The codec choice in each job determines whether YouTube saves $50 million annually or bleeds $50 million in unnecessary bandwidth costs.
 
 This part reveals the hidden economics: when does the slowest, most computationally expensive codec (AV1) actually become the cheapest?

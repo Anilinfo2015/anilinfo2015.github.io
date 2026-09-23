@@ -4,6 +4,10 @@
 
 You have designed the system. Now comes the hardest part: **Day 2 Operations**.
 
+> **Reader path — 5. Deep dives (reliability, security, and operations):** [Separate scoped walkthrough](../interview-questions/distributed-cache.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Specialized tiers](05-specialized-caching.md) → production checks here → [practice companion](staff-feedback-and-practice-plan.md). These checks expand the [working baseline](02-mvp-architecture.md) and selected scaling decisions.
+
 This article covers the "unknown unknowns"—the reusable patterns for edge cases, the security layers for compliance, and the observability stack you need to sleep at night.
 
 ---
@@ -168,4 +172,4 @@ You are now ready.
 * Commit-before-invalidate + lease tokens: https://www.systemoverflow.com/learn/caching/cache-invalidation/write-path-patterns-write-through-write-behind-and-cache-aside-with-delete-on-write
 
 ---
-**[Back to Series Index (README)](README.md)**
+**[Back to Requirements, Entities, and Interface](01-introduction-and-requirements.md)**

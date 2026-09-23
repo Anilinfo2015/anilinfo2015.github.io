@@ -4,6 +4,10 @@
 
 If your goal were simply “get a cache working”, you would install Redis and move on.
 
+> **Reader path — 5. Deep dives (reference trade-offs):** [Separate scoped walkthrough](../interview-questions/distributed-cache.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Scaling challenges](03-scaling-challenges.md) → reference designs here → [specialized caching](05-specialized-caching.md). These comparisons expand the [working baseline](02-mvp-architecture.md), not a new framework sequence.
+
 But interviews (and real in-house platforms) often ask for something different: **design a cache service from scratch**.
 
 So this chapter is explicitly *reference-only*: we study how real systems are built so we can borrow their best ideas.

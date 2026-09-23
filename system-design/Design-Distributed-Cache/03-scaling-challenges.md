@@ -1,5 +1,48 @@
 # Article 3: Scaling Challenges & Trade-offs
 
+## Database overload and hit ratio
+
+Here is the uncomfortable truth of system design: **Databases don't scale effortlessly. Your application traffic does.**
+
+> **Reader path — 5. Deep dives (bottlenecks and scaling):** [Separate scoped walkthrough](../interview-questions/distributed-cache.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Working baseline and internals](02-mvp-architecture.md) → distributed trade-offs here → [reference technologies](04-core-technologies.md). Sizing supports routing, replication, and rebalancing decisions within stage 5.
+
+Modern databases like PostgreSQL are miracles of engineering, capable of handling 10,000+ complex queries per second. But your "viral" application generates 100,000 requests per second, and 99% of them are asking for the exact same Profile Page.
+
+### The Physics of the Problem
+*   **Database (Disk)**: To read a row, the disk head moves (or SSD controller seeks). Cost: **millions of CPU cycles**.
+*   **Cache (RAM)**: To read a key, the CPU follows a pointer. Cost: **hundreds of CPU cycles**.
+
+The difference isn't percentage points. It's orders of magnitude.
+
+### Real-World Stakes
+*   **Meta**: Deploys 30,000+ Memcached servers. Without this layer, their databases would receive 1 *billion* requests per second instead of a manageable 50 million.
+*   **Netflix**: Serves 500,000 request/sec from their EVCache (Redis/Memcached) tier. Their database tier handles a fraction of that. Without caching, Netflix would need 10x more database hardware—or simpler, it would just be down.
+
+> **The Math is Brutal:**
+> *   **Traffic**: 1,000,000 users/sec.
+> *   **Database Capacity**: 5,000 QPS.
+> *   **Without Cache**: 200x overload. Immediate collapse.
+> *   **With 99% Hit Ratio Cache**: Database sees 10,000 QPS. Still 2x overload.
+> *   **With 99.9% Hit Ratio Cache**: Database sees 1,000 QPS. Safe.
+>
+> **Takeaway**: A cache isn't an optimization; it is a structural necessity for survival.
+
+### A Cautionary Tale: The Pinterest Incident
+
+In 2013, Pinterest suffered a major outage during Black Friday. It wasn't a code bug. It was a cache failure.
+
+1.  **The Trigger**: A configuration change made the cache cluster unstable.
+2.  **The Drop**: Cache hit ratio dropped from **95%** to **40%**.
+3.  **The Illusion**: 40% sounds okay, right? It's still caching almost half the traffic!
+4.  **The Reality**: With 95% hit ratio, the DB takes 5% of traffic. With 40% hit ratio, the DB takes 60% of traffic. **That is a 12x load spike.**
+5.  **The Result**: The databases melted. Pinterest was down for hours.
+
+This series isn't about "making things fast." It is about **reliability engineering**.
+
+---
+
 **"Distributed Systems" is just a fancy way of saying "Now we have more problems."**
 
 Moving from one node to two nodes changes everything. You don’t get “2× capacity”. You get routing, membership, rebalancing, and failure semantics that now live on the network.

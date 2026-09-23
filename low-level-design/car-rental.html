@@ -4,13 +4,18 @@ description: "Vehicle-specific interval reservations, pickup checks, and atomic 
 ---
 <h1>Car Rental</h1>
 
-<h2>1. Requirements</h2>
-<p>Reserve a specific vehicle, cancel before pickup, start a rental, and return the vehicle to its original branch. Concurrent callers share transactional storage. Reservations use UTC half-open intervals [start,end), with positive duration and a maximum of 30 elapsed days. Rental prices use integer minor units and a snapshotted hourly rate. Search returns at most 100 candidates.</p>
+<p>LLD stages: <a href="#requirements">Requirements</a> → <a href="#core-entities">Core entities</a> → <a href="#api">API or system interface</a> → <a href="#high-level-design">High-level design</a> → <a href="#deep-dives">Deep dives</a>.</p>
 
-<h2>2. Out of scope</h2>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Reserve a specific vehicle, cancel before pickup, start a rental, and return the vehicle to its original branch. Reservations use UTC half-open intervals [start,end), with positive duration. Rental prices use integer minor units and a snapshotted hourly rate.</p>
+<h3>Non-functional and execution constraints</h3>
+<p>Concurrent callers share transactional storage. Reservations last at most 30 elapsed days. Search returns at most 100 candidates. Reservation ownership, rental facts, and retry results commit atomically.</p>
+
+<h3>Out of scope</h3>
 <p>Exclude one-way rentals, deposits, payments, insurance, damage assessment, and vehicle substitution. Billing records an amount owed, charging commenced hours without a grace period. Reservations cannot guarantee timely return by previous renters.</p>
 
-<h2>3. Model and invariants</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>RentalService</code> owns transitions. <code>Vehicle</code> owns branch, class, serviceability, latest odometer, and active-rental pointer. <code>Reservation</code> owns customer, vehicle, planned interval, hourly rate, version, and state. <code>Rental</code> records actual pickup and return facts.</p>
 <pre class="mermaid">
 classDiagram
@@ -24,21 +29,22 @@ classDiagram
 </pre>
 <p>Non-cancelled planned intervals never overlap for one vehicle. At most one rental physically holds that vehicle. States are <code>RESERVED → ACTIVE → RETURNED</code> or <code>RESERVED → CANCELLED</code>. Odometer readings never decrease.</p>
 
-<h2>4. Public contract</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>search(branchId, vehicleClass, start, end) → Vehicle[]</code> returns up to 100 serviceable vehicles at that branch of that class without overlapping non-cancelled reservations, ordered by ID. Availability is advisory; reserve rechecks. Unknown branch/class returns <code>NotFound</code>; invalid intervals return <code>InvalidInterval</code>.</p>
 <p><code>reserve(customerId, vehicleId, start, end, key) → Reservation</code> returns <code>NotFound</code>, <code>InvalidInterval</code>, <code>Unavailable</code>, or <code>KeyConflict</code>; same key and payload return the stored reservation. <code>pickup(id, customerId, expectedVersion) → Rental</code> returns <code>Forbidden</code>, <code>StaleVersion</code>, <code>PickupWindowClosed</code>, <code>VehicleNotReady</code>, <code>InvalidState</code>, or <code>NotFound</code>. <code>returnVehicle(id, odometer, key) → Invoice</code> requires branch staff authorization and returns <code>InvalidOdometer</code>, <code>InvalidState</code>, <code>NotFound</code>, or <code>KeyConflict</code>. Identical return retries preserve the original timestamp and invoice. <code>cancel(id, customerId, expectedVersion)</code> returns the cancelled reservation or the corresponding identity, version, or state error.</p>
 
-<h2>5. Core flow</h2>
-<p>Reservation locks the vehicle, verifies serviceability, and rechecks planned overlaps using the strict half-open predicate. Persist rate, reservation, and request key together. Cancellation takes the same lock and succeeds only before planned start.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<p><code>RentalService.reserve</code> locks the <code>Vehicle</code>, verifies serviceability, and rechecks planned overlaps using the strict half-open predicate. It creates the <code>Reservation</code> and persists rate, reservation, and request key together. Cancellation takes the same lock and succeeds only before planned start.</p>
 <p>Pickup locks vehicle then reservation and requires database time in [start,end), a serviceable vehicle, and no active-rental pointer. Store the actual pickup time and starting odometer, attach the rental, and increment version atomically.</p>
 <p>Return takes the same locks and validates the new odometer against pickup. Read database time once. Bill <code>max(1, ceil(elapsedSeconds / 3600)) × hourlyRate</code> using checked arithmetic, including late hours at the same rate. Persist the invoice, return facts, key, and returned state while clearing the vehicle pointer and updating its odometer.</p>
 
-<h2>6. Trade-offs and extensions</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and extensions</h3>
 <p>Concrete-vehicle booking avoids fleet-capacity allocation logic but makes breakdowns visible. A substitution extension must lock both vehicles in identifier order and verify the replacement interval before changing ownership.</p>
 
-<h2>7. Concurrency and failure handling</h2>
+<h3>Concurrency and failure handling</h3>
 <p>All writers use vehicle-first locking. An active-rental pointer prevents another pickup; late return cannot clear another rental's pointer. The next reservation may fail pickup with <code>VehicleNotReady</code>, without cancellation. Durable return keys prevent retry-dependent billing. Crashes roll back incomplete transitions.</p>
 
-<h2>8. Test cases</h2>
+<h3>Test cases</h3>
 <p>[10:00,12:00) and [12:00,14:00) can be reserved together. Pickup exactly at planned end fails. Returning after 3601 seconds at 700 minor units/hour costs 1400. A lower odometer is rejected without releasing the car. Two pickups for one reservation yield one active rental. Duplicate returns yield one invoice. A late previous renter blocks the next pickup; a 31-day reservation is rejected immediately.</p>
 <p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

@@ -4,6 +4,8 @@ This isn't a glossary. We assume you know what a Load Balancer is and what SQL s
 
 These are the "War Stories" of distributed systems.
 
+This is a [stage 5: deep dives](../system-design/interview-template.html#deep-dives) reference. First establish requirements, core entities, interfaces, and a working high-level design using the [shared delivery framework](../system-design/interview-template.html). Then choose a bottleneck below that threatens a stated requirement, compare its remedies, and explain the failure behavior. These examples supplement a baseline; they are not a substitute for one.
+
 ---
 
 ## 1. The "Justin Bieber" Effect (Extreme Fan-out)

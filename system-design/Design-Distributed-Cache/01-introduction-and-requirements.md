@@ -4,52 +4,19 @@
 
 When Netflix recommendations load in 800ms instead of 10 seconds, or your Twitter feed refreshes instantly even during the Super Bowl—you aren't seeing a fast database: you're seeing a well-designed cache.
 
+> **Reader path — stages 1–3:** [Requirements](../interview-questions/distributed-cache.html#requirements) → [core entities](../interview-questions/distributed-cache.html#core-entities) → [API or system interface](../interview-questions/distributed-cache.html#api) · [HLD template](../interview-template.html). The concise answer is a separate scoped walkthrough; assumptions and contracts may differ.
+>
+> **Series:** foundations here → [4. Working baseline](02-mvp-architecture.md) → [5. Deep dives](03-scaling-challenges.md). Article numbers identify chapters, not additional delivery stages.
+
 Caching is the art of cheating. It’s the art of giving users the right answer without doing the hard work of calculating it again. This article covers the *why*, the *what*, and the *design*. Because implementing a cache is easy; specificying the right one is hard.
 
 ---
 
-## 1. The Core Problem: Databases Can't Scale (Like You Need Them To)
+<a id="3-what-we-are-building"></a>
+<a id="what-we-are-building"></a>
+## 1. Requirements
 
-Here is the uncomfortable truth of system design: **Databases don't scale effortlessly. Your application traffic does.**
-
-Modern databases like PostgreSQL are miracles of engineering, capable of handling 10,000+ complex queries per second. But your "viral" application generates 100,000 requests per second, and 99% of them are asking for the exact same Profile Page.
-
-### The Physics of the Problem
-*   **Database (Disk)**: To read a row, the disk head moves (or SSD controller seeks). Cost: **millions of CPU cycles**.
-*   **Cache (RAM)**: To read a key, the CPU follows a pointer. Cost: **hundreds of CPU cycles**.
-
-The difference isn't percentage points. It's orders of magnitude.
-
-### Real-World Stakes
-*   **Meta**: Deploys 30,000+ Memcached servers. Without this layer, their databases would receive 1 *billion* requests per second instead of a manageable 50 million.
-*   **Netflix**: Serves 500,000 request/sec from their EVCache (Redis/Memcached) tier. Their database tier handles a fraction of that. Without caching, Netflix would need 10x more database hardware—or simpler, it would just be down.
-
-> **The Math is Brutal:**
-> *   **Traffic**: 1,000,000 users/sec.
-> *   **Database Capacity**: 5,000 QPS.
-> *   **Without Cache**: 200x overload. Immediate collapse.
-> *   **With 99% Hit Ratio Cache**: Database sees 10,000 QPS. Still 2x overload.
-> *   **With 99.9% Hit Ratio Cache**: Database sees 1,000 QPS. Safe.
->
-> **Takeaway**: A cache isn't an optimization; it is a structural necessity for survival.
-
----
-
-## 2. A Cautionary Tale: The Pinterest Incident
-
-In 2013, Pinterest suffered a major outage during Black Friday. It wasn't a code bug. It was a cache failure.
-
-1.  **The Trigger**: A configuration change made the cache cluster unstable.
-2.  **The Drop**: Cache hit ratio dropped from **95%** to **40%**.
-3.  **The Illusion**: 40% sounds okay, right? It's still caching almost half the traffic!
-4.  **The Reality**: With 95% hit ratio, the DB takes 5% of traffic. With 40% hit ratio, the DB takes 60% of traffic. **That is a 12x load spike.**
-5.  **The Result**: The databases melted. Pinterest was down for hours.
-
-This series isn't about "making things fast." It is about **reliability engineering**.
-
----
-
-## 3. What We Are Building
+### Scope
 
 We are designing a **Distributed Cache System**. It's not just a `HashMap` on a server; it's a robust, multi-node service that powers your architecture.
 
@@ -67,7 +34,9 @@ We are designing a **Distributed Cache System**. It's not just a `HashMap` on a 
 
 ---
 
-## 4. The Data Model & Entities
+<a id="4-the-data-model--entities"></a>
+<a id="the-data-model--entities"></a>
+## 2. Core entities
 
 Before writing code, we define our entities. A "Cache" isn't a nebulous cloud; it is a hierarchy.
 
@@ -105,7 +74,9 @@ classDiagram
 
 ---
 
-## 5. API Design: The Contract
+<a id="5-api-design-the-contract"></a>
+<a id="api-design-the-contract"></a>
+## 3. API or system interface
 
 A clean API makes the system usable. Here is the JSON-over-HTTP spec (though in production, we'd use a binary protocol like RESP or Protobuf for speed).
 
@@ -158,6 +129,14 @@ GET /v1/cache/batch?keys=users:1001,users:1002,users:1003
 ---
 
 ## Summary
+
+<a id="1-the-core-problem-databases-cant-scale-like-you-need-them-to"></a>
+<a id="the-core-problem-databases-cant-scale-like-you-need-them-to"></a>
+<a id="the-physics-of-the-problem"></a>
+<a id="real-world-stakes"></a>
+<a id="2-a-cautionary-tale-the-pinterest-incident"></a>
+<a id="a-cautionary-tale-the-pinterest-incident"></a>
+The database-overload estimates and outage example now appear in the [scaling deep dive](03-scaling-challenges.md#database-overload-and-hit-ratio), after the working baseline.
 
 We have defined the **Problem** (Database overload), the **Goal** (95% hit ratio, <5ms latency), and the **Contract** (API).
 

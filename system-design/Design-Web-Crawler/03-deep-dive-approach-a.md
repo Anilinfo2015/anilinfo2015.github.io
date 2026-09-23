@@ -18,6 +18,10 @@ The hardest part of a high-throughput crawler is not “fetch a page”. It’s 
 - handling retries and backoff,
 - and staying reliable during spikes and failures.
 
+> **Reader path — 5. Deep dives (Kafka frontier):** [Separate scoped walkthrough](../interview-questions/web-crawler.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Scale analysis](02-scale-analysis.md) → Kafka approach here → [Redis alternative](04-deep-dive-approach-b.md). Protocols, pipeline flows, and recovery expand the [working baseline](01-foundations.md#basic-hld-default-approach), not a new full design.
+
 This is the URL frontier problem.
 
 ## Proposed solution (protocols, data model, flows)

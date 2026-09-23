@@ -3,16 +3,22 @@ title: "Design metrics monitoring"
 description: "Time-series ingestion, bounded queries, and reliable alert evaluation."
 ---
 <h1>Design metrics monitoring</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> ingest timestamped metrics; query charts over time ranges; configure threshold alerts and inspect their state. Support gauges and monotonically increasing counters with explicit reset handling.</p>
-<p><strong>Non-functional assumptions:</strong> N1: ingest one million samples/s peak and expose accepted samples within ten seconds. N2: chart queries over at most 1,000 series and 24 hours finish below two seconds p95. N3: detect sustained threshold breaches within 60 seconds and preserve acknowledged samples through one storage-node failure.</p>
-<h2>2. Out of scope</h2>
-<p>Exclude logs, distributed traces, arbitrary joins, and notification-provider design. Retain raw metrics for seven days and minute rollups for 90 days.</p>
-<h2>3. Core entities</h2>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#data-flow">Data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Ingest timestamped metrics; query charts over time ranges; configure threshold alerts and inspect their state. Support gauges and monotonically increasing counters with explicit reset handling.</p>
+<h3>Nonfunctional requirements</h3>
+<p><strong>Assumed targets:</strong> N1: ingest one million samples/s peak and expose accepted samples within ten seconds. N2: chart queries over at most 1,000 series and 24 hours finish below two seconds p95. N3: detect sustained threshold breaches within 60 seconds and preserve acknowledged samples through one storage-node failure.</p>
+<p>Retain raw metrics for seven days and minute rollups for 90 days.</p>
+<h3>Out of scope</h3>
+<p>Exclude logs, distributed traces, arbitrary joins, and notification-provider design.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p>Series uses a collision-checked hash of tenant, metric name, and canonical labels. Sample uses (series ID, timestamp), with value. AlertRule uses (tenant, rule ID); Evaluation uses (rule ID, evaluation time). The invariant is one canonical value per sample key: identical retries are harmless, conflicting values are rejected rather than silently summed.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /samples</code> accepts labeled batches and returns per-sample acceptance or errors. Tenant-scoped agent tokens authorize writes; retries resend only unacknowledged samples. Invalid timestamps return 400, conflicting samples 409, and cardinality or throughput limits 429 with Retry-After. <code>GET /query</code> accepts expression, start, end, and step; returns bounded series arrays or 422 for excessive cost. Reader tokens cannot cross tenant boundaries. <code>PUT /alerts/{id}</code> takes expression, threshold, duration, and expected version; returns version or 409. <code>GET /alerts/{id}</code> returns active, inactive, or unknown state.</p>
-<h2>5. Basic design</h2>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>Labeled samples become canonical series points, recent queryable data, and compressed blocks with minute rollups. Chart queries select series and time ranges; alert evaluations turn sampled values into durable state transitions, treating missing data separately from healthy values.</p>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Agent --> Ingest
@@ -27,14 +33,15 @@ flowchart LR
 <li>Use label indexes to select series and scan their time ranges for charts.</li>
 <li>Store alert rules, evaluate them periodically, and persist transitions for status reads and notification dispatch.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>A general database handles small deployments but high-cardinality indexes and continuous writes compete with scans. Compressed time-series blocks reduce storage and scan costs; delayed block sealing requires a separate recent-data path. Approximate sketches would save space for distributions but cannot replace exact gauge histories.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: compression and retention</h3>
 <p>Assume 500,000 samples/s average, twice that at peak, and 16 raw bytes per timestamp/value pair. Raw payload is 8 MB/s, or 691.2 GB/day; seven days need 4.84 TB, before labels and replicas. Three copies approach 14.5 TB. This justifies compression, explicit retention, and rollups rather than keeping all samples in query-process memory.</p>
-<h2>8. Deep dive 1: Ingest and query partitions</h2>
+<h3>Ingest and query partitions</h3>
 <p>N1/N2 partition by tenant and series hash, then time. Series owners serialize compare-and-append by sample key: identical values reuse acceptance, conflicts return 409, and new values require quorum commit before acknowledgment. The comparison covers buffered and persisted samples. Rebuild buffers from log offsets after crashes; merge reads by sample key. Label indexes narrow scans; quotas bound cardinality. Minute rollups retain count, sum, minimum, and maximum; counter rates use reset-aware deltas. Bound output points, use coarser rollups for long ranges, and reject expensive queries to protect ingestion.</p>
-<h2>9. Deep dive 2: Alert correctness</h2>
+<h3>Alert correctness</h3>
 <p>N3 acknowledges only quorum-durable sample writes. Assign rules by tenant/rule hash with renewable leases and fenced evaluation epochs. Evaluate every 15 seconds after a ten-second ingestion allowance; a configured 30-second sustained breach therefore targets detection within 60 seconds. Persist pending-since time, evaluation watermark, and transition outbox atomically. After failover, replay missing evaluation slots; a unique transition key suppresses duplicate notifications locally. Missing data produces unknown, not healthy. Older late samples may correct charts but do not retract already-sent alerts; display that policy explicitly.</p>
-<h2>10. Check the design</h2>
-<p>N1/N2 map to dive 1; N3 maps to dive 2. Race conflicting samples, then kill their storage leader: only one value may succeed and survive. Kill an evaluator after transition commit: its replacement must preserve pending duration and reuse the transition key.</p>
+<h3>Check the design</h3>
+<p>N1/N2 map to ingest and query partitions; N3 maps to alert correctness and quorum-durable ingestion. Race conflicting samples, then kill their storage leader: only one value may succeed and survive. Kill an evaluator after transition commit: its replacement must preserve pending duration and reuse the transition key.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

@@ -2,6 +2,10 @@
 
 **Beyond the standard RAM architecture.**
 
+> **Reader path — 5. Deep dives (cache tiers):** [Separate scoped walkthrough](../interview-questions/distributed-cache.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Reference technologies](04-core-technologies.md) → specialized tiers here → [production mastery](06-production-mastery.md). Choose tiers to address bottlenecks in the [working baseline](02-mvp-architecture.md).
+
 Sometimes, “just run a distributed in-memory cache” isn’t enough.
 *   What if you need to store **200TB** of data? (RAM is too expensive).
 *   What if **1ms** latency is too slow? (Network is the bottleneck).

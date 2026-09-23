@@ -73,9 +73,14 @@ Whether you're preparing for FAANG interviews, architecting your next startup, o
 
 Start with the [question catalog](interview-guide.html), which groups 24 HLD
 and 26 LLD articles by the problem they cover. The [HLD template](system-design/interview-template.html)
-uses a working baseline followed by two deep dives. The [LLD template](low-level-design/interview-template.html)
-focuses on state ownership, method contracts, concurrency, and concrete tests.
-The catalog records the coverage gaps and links to the existing longer HLD series.
+and [LLD template](low-level-design/interview-template.html) use the same delivery sequence:
+**requirements → core entities → API or system interface → high-level design → deep dives**.
+An optional data-flow sketch fits between the interface and design for pipeline-heavy problems.
+Scope stays within requirements; estimates belong beside the decisions they inform.
+LLD adapts the sequence to state ownership, method contracts, object collaboration, concurrency,
+and concrete tests. Longer HLD chapters and LLD technique guides link to their relevant stages.
+The structural reference is [Hello Interview's system-design delivery framework](https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery);
+the worked explanations are original.
 
 ### 🏛️ Architecture Patterns
 
@@ -243,7 +248,7 @@ Contributions are welcome! Here's how you can help:
 
 ### Contribution Guidelines
 
-- Follow the existing article structure and formatting
+- Follow the shared [HLD](system-design/interview-template.html) or [LLD](low-level-design/interview-template.html) delivery template for worked design answers; keep stage-specific chapters linked to their place in the sequence
 - Include diagrams where they add clarity
 - Cite sources for statistics and claims
 - Test your markdown locally before submitting

@@ -16,6 +16,10 @@ A crawler has two security “directions”:
 1) **Outbound risk** (crawler interacting with untrusted websites)
 2) **Inbound risk** (attackers abusing the crawler’s internal APIs and infrastructure)
 
+> **Reader path — 5. Deep dives (security and trust):** [Separate scoped walkthrough](../interview-questions/web-crawler.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Frontier alternatives](04-deep-dive-approach-b.md) → trust boundaries here → [production readiness](06-production-readiness.md). This chapter expands protections around the [working baseline](01-foundations.md#basic-hld-default-approach).
+
 Based on the security threat-model research, outbound threats include:
 - crawling malicious pages (malware, phishing)
 - being tricked into downloading dangerous payloads

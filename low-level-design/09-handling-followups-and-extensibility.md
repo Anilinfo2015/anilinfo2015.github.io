@@ -9,9 +9,11 @@ topics: ["Low-Level Design", "Extensibility", "Open-Closed Principle", "Intervie
 
 # Handling Follow-ups and Extensibility
 
-> Self-contained. This article is about the back half of the LLD interview — the part where the interviewer stops asking you to design and starts *stretching* what you built. How you absorb those curveballs is often the deciding factor.
+> Self-contained. This article is about follow-ups, especially during Deep dives, when the interviewer starts *stretching* what you built. How you absorb those curveballs is often the deciding factor.
 
-The first 20 minutes of an LLD interview are you talking. The last 20 are a conversation, driven by the interviewer throwing new requirements at your design: "now add surge pricing," "what if the seat hold expires," "support a second payment method." These aren't gotchas — they're the *main event*. The interviewer is measuring whether your design can bend without breaking, and whether you can extend it calmly. Candidates who built the right seams sail through; candidates who hard-coded everything start visibly rewriting and sink. This article is how to be the former.
+**Stage-focused coaching, not a separate design framework:** use this primarily in [5. Deep dives](interview-template.html#deep-dives), drawing on seams from [3. API or system interface](interview-template.html#api). When a follow-up changes scope, update [1. Requirements](interview-template.html#requirements) and revisit the affected entities, contracts, or flow. The response recipe below stays within the shared five-stage outline.
+
+Once the core design is visible, follow-ups often drive the conversation: "now add surge pricing," "what if the seat hold expires," "support a second payment method." They can arrive at any stage, so do not reserve collaboration for a fixed late-interview slot. These aren't gotchas — they're a major part of the exercise. The interviewer is measuring whether your design can bend without breaking, and whether you can extend it calmly. Candidates who built the right seams sail through; candidates who hard-coded everything start visibly rewriting and sink. This article is how to be the former.
 
 ---
 
@@ -23,7 +25,7 @@ A new requirement mid-interview is not a sign you missed something. It's the int
 
 ## The extensibility test: every change should be "a new class," not "an edit"
 
-The gold standard your design is aiming for is the **Open/Closed principle**: open for extension, closed for modification. Concretely, when the interviewer adds a variant, you want to *add* code, not *rewrite* it. This is why the framework insists on putting variation behind interfaces early — so that later:
+The gold standard your design is aiming for is the **Open/Closed principle**: open for extension, closed for modification. Concretely, when the interviewer adds a variant, you want to *add* code, not *rewrite* it. This is why the API or system interface stage identifies justified variation seams — so that later:
 
 | Follow-up | Weak design | Strong design |
 |---|---|---|

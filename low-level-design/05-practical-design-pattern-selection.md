@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "Design Patterns", "Strategy", "State", "Observer",
 
 > Self-contained. This article is a working engineer's guide to the *small* set of design patterns that actually earn their keep in LLD interviews — when to reach for each, and how to avoid the "pattern for pattern's sake" smell that senior interviewers punish.
 
+**Stage-focused coaching, not a separate design framework:** use patterns to shape seams in [3. API or system interface](interview-template.html#api), show their object collaboration in [4. High-level design](interview-template.html#high-level-design), and justify extensions and trade-offs in [5. Deep dives](interview-template.html#deep-dives). The numbered pattern catalog below is a toolbox, not a delivery sequence.
+
 You do not need all 23 Gang-of-Four patterns. In practice, LLD interviews revolve around a handful, and the skill being tested is **recognizing the variation point and naming the right pattern in one breath** — not reciting UML. Just as damaging as knowing no patterns is over-applying them: wrapping everything in a factory-of-factories reads as junior. This article gives you the short list and the trigger for each.
 
 ---

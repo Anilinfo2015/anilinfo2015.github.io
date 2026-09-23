@@ -1,38 +1,48 @@
 ---
-title: "HLD interview article template"
-description: "Requirements, a working baseline, and two focused deep dives."
+title: "HLD delivery framework"
+description: "Requirements, core entities, interfaces, a working high-level design, and focused deep dives."
 ---
-<h1>HLD interview article template</h1>
-<p>Start with a design that handles the requested features. Add scale and failure handling only after its limits are clear. Each worked article follows the sections below.</p>
-<h2>1. Requirements</h2>
+<h1>HLD delivery framework</h1>
+<p>Use one sequence throughout the system-design library: requirements → core entities → API or system interface → high-level design → deep dives. Add a data-flow sketch between the interface and design only when a processing pipeline needs it. Establish a working baseline before optimizing it.</p>
+<p>This structure is informed by <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">Hello Interview’s system-design delivery framework</a>. The explanations and worked designs here are original. The <a href="../low-level-design/interview-template.html">LLD template</a> adapts the same sequence to objects and methods rather than distributed services.</p>
+<nav aria-label="Delivery stages">
+  <a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">Interface</a> · <a href="#data-flow">Optional data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a>
+</nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Agree on the few user actions the design must support. Prioritize the essential flows instead of trying to reproduce every feature of a familiar product.</p>
+<h3>Non-functional requirements</h3>
 <ul>
-  <li><strong>Functional:</strong> three or four concrete user actions.</li>
-  <li><strong>Non-functional:</strong> numbered targets for latency, scale, consistency, durability, or availability. Treat numbers as interview assumptions, not measured product statistics.</li>
+  <li>State relevant latency, scale, consistency, durability, and availability targets. Label them so the deep dives can refer back to them.</li>
+  <li>Explain which operations need which guarantees; a payment write and a search read need not have the same consistency.</li>
+  <li>Treat workload figures as interview assumptions, not measured product statistics. Calculate capacity when it changes a design decision, not as a mandatory opening exercise.</li>
 </ul>
-<h2>2. Out of scope</h2>
+<h3>Out of scope</h3>
 <p>Name the features excluded from this design. Authentication and resource authorization still apply to every API; an identity platform need not be designed here.</p>
-<h2>3. Core entities</h2>
-<p>List the records, their keys, and the relationships needed by the main flows. Include the invariant that must not break.</p>
-<h2>4. API</h2>
-<p>Show operations, important inputs, responses, and relevant errors. Specify pagination, ownership checks, and retry behavior where they affect correctness.</p>
-<h2>5. Basic design</h2>
-<p>Use a small Mermaid diagram and a numbered read/write flow. This baseline must cover every functional requirement; it does not yet need to meet the scale targets.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p>Identify the domain records, identities, relationships, and invariants needed by the main flows. Keep this a compact model, not a complete database schema or a list of infrastructure products. Refine storage details when the design needs them.</p>
+<h2 id="api">3. API or system interface</h2>
+<p>Show the operations implied by the requirements, with important inputs, responses, and errors. Use HTTP endpoints for a user-facing service, or event and job contracts for an internal pipeline. Specify ownership checks, pagination, and retry semantics where they affect correctness.</p>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>For systems such as crawlers or event aggregation, outline the transformations from input to output before choosing components: discover → fetch → parse → store, for example. Omit this section when the API and ordinary read/write flow already make the work clear. This is a logical pipeline, not a second architecture diagram.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<p>Draw the smallest complete system and walk each required operation through it. Name the owner of authoritative state and show what is read or written, including the acknowledgement boundary. This baseline must satisfy the functional requirements; explain its limits before adding scale-specific machinery.</p>
 <pre class="mermaid">
 flowchart LR
     Client --> Application
     Application --> Database
 </pre>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<p>Choose the topics from the non-functional requirements and the baseline’s concrete weaknesses. The number of dives depends on the problem; two is not a requirement. For each, explain the mechanism, an alternative, the cost, and the behavior during failure.</p>
+<h3>Trade-offs and bottlenecks</h3>
 <p>Explain what the baseline makes easy and where it fails. Compare a concrete alternative, rather than listing technologies.</p>
-<h2>7. Scale estimate</h2>
-<p>State assumptions, units, arithmetic, and the decision affected by the result. Separate average from peak load and raw data from indexes and replicas. Do not calculate numbers that change nothing.</p>
-<h2>8. Deep dive 1</h2>
-<p>Address the first group of non-functional requirements: mechanism, partition key or contention boundary, failure behavior, and cost.</p>
-<h2>9. Deep dive 2</h2>
-<p>Address the remaining non-functional requirements. Explain retries, recovery, and the consistency guarantee instead of claiming “exactly once” without a boundary.</p>
-<h2>10. Check the design</h2>
-<p>Map every numbered non-functional requirement to one of the two deep dives. Include a failure scenario and an observable result. A target is a goal to test, not a guarantee created by drawing a cache.</p>
-<h2>Sources and review</h2>
-<p>The section order draws on <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">Hello Interview’s delivery framework</a>: requirements, core entities, API, a working high-level design, then deep dives. These are original worked designs, not copies of its solutions. The framework was checked through indexed search results on September 23, 2026; direct page access was unavailable.</p>
+<h3>Decision-driven estimates</h3>
+<p>Put an estimate next to the decision it informs. State assumptions, units, arithmetic, and what would change at a different load. Separate average from peak traffic and raw data from indexes and replicas. Skip calculations that change nothing.</p>
+<h3>Scaling, correctness, and recovery</h3>
+<p>Explain the partition key or contention boundary, replication and consistency guarantees, overload behavior, retries, and recovery as relevant to the selected problem. Do not claim “exactly once” without defining the boundary.</p>
+<h3>Check the design</h3>
+<p>Trace every functional requirement through the baseline and every non-functional requirement to a design choice or a stated limitation. Include failure scenarios and observable outcomes. A target is a goal to test, not a guarantee created by drawing a cache.</p>
+<h3>Publishing review</h3>
 <p>Before publishing: check requirement coverage, arithmetic, API semantics, diagram labels, recovery paths, and links. Remove rehearsed dialogue, unsupported claims about real companies, filler introductions, and repeated conclusions.</p>
+<p>All worked HLD answers follow these stages. Longer studies expand individual stages and link back to a separate, scoped worked answer; their capacity assumptions need not match. Start with the <a href="interview-questions/url-shortener.html">URL-shortener walkthrough</a> or the pipeline-oriented <a href="interview-questions/web-crawler.html">web crawler</a>.</p>
 <p><a href="../interview-guide.html">Question catalog</a> · <a href="../low-level-design/interview-template.html">LLD template</a></p>

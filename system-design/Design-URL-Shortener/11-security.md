@@ -3,6 +3,11 @@
 ## The Dark Side of URL Shorteners
 
 Building the system is half the battle. Protecting it is the other half.
+
+> **Reader path — 5. Deep dives (security):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Patterns](10-reusable-patterns.md) → abuse prevention here → [production readiness](12-production-readiness.md). This expands the trust boundaries of the [working baseline](04-basic-system-design.md).
+
 URL Shorteners are a favorite tool for attackers. Why?
 *   **Phishing**: `short.app/login` looks safer than `attacker.com/steal-creds`.
 *   **Malware**: `short.app/update` hides `virus.exe`.

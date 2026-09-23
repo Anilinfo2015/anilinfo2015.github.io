@@ -3,16 +3,21 @@ title: "Design a top-k service"
 description: "Exact rolling popularity counts with item-owned partitions and recoverable windows."
 ---
 <h1>Design a top-k service</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> ingest activity events; return a tenant's top k items; retrieve an item's count. The window spans 60 completed UTC minute buckets, advancing every minute.</p>
-<p><strong>Non-functional assumptions:</strong> N1: query p95 below 100 ms for k at most 100. N2: accept one million events/s peak across ten million active items. N3: publish each completed-minute view within ten seconds, with exact deduplicated counts for accepted events arriving up to two minutes late, including after one worker failure.</p>
-<h2>2. Out of scope</h2>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#data-flow">Data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Ingest activity events; return a tenant's top k items; retrieve an item's count. The window spans 60 completed UTC minute buckets, advancing every minute.</p>
+<h3>Nonfunctional requirements</h3>
+<p><strong>Assumed targets:</strong> N1: query p95 below 100 ms for k at most 100. N2: accept one million events/s peak across ten million active items. N3: publish each completed-minute view within ten seconds, with exact deduplicated counts for accepted events arriving up to two minutes late, including after one worker failure.</p>
+<h3>Out of scope</h3>
 <p>Exclude arbitrary windows, unique-user counts, personalized rankings, and corrections beyond two minutes. Counts cover accepted events, not undelivered activity.</p>
-<h2>3. Core entities</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p>Event uses (tenant, event ID), with immutable item ID and event time. Bucket uses (tenant, item ID, minute). RankingSnapshot uses (tenant, window end, revision). Each accepted event contributes once to one item-owning partition. Ties sort by item ID.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /events</code> accepts authenticated tenant batches and returns per-event acceptance. Same-ID retries are harmless; changed payloads return 409. Invalid or too-late timestamps return 422, overload 429. <code>GET /top?k=&amp;windowEnd=</code> returns item/count pairs, revision, and provisional status; there is no pagination beyond 100. <code>GET /items/{id}/count</code> accepts that revision and returns its count. Reader credentials restrict tenant access; missing retained revisions return 410. Reads are retryable, and counts remain provisional until the lateness allowance closes.</p>
-<h2>5. Basic design</h2>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>Tenant events are deduplicated before contributing to item-minute buckets. Rolling sums over completed minutes produce ranking candidates; their merged snapshot and individual item counts share one published revision. Late events can correct provisional revisions without being counted twice.</p>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Producer --> API
@@ -27,14 +32,15 @@ flowchart LR
 <li>Every minute, sum the last 60 buckets per item and sort counts for top-k queries.</li>
 <li>Store the window revision so ranking and individual count reads use the same view.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>Database sorting repeatedly scans all active items. Heavy-hitter sketches are smaller but introduce cutoff errors and complicate expiration. Choose exact item-owned counts, accepting larger state.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: exact state and merge size</h3>
 <p>Assume 100,000 events/s average and tenfold peak. One hour contains 360 million events; 24-byte deduplication records alone require 8.64 GB before indexes and replication. Ten million items with 60 eight-byte counters need another 4.8 GB raw. Partition state and enforce retention. With 64 partitions and k=100, a coordinator merges only 6,400 candidates per tenant snapshot rather than ten million items.</p>
-<h2>8. Deep dive 1: Exact distributed ranking</h2>
+<h3>Exact distributed ranking</h3>
 <p>N1/N2 hash (tenant, item ID) to one owner. Each owner keeps a ring of minute counters and an ordered index by rolling sum; an event or bucket expiry removes the old score and inserts the new score in logarithmic time. Publish each owner's top 100. Their union contains the global top 100 because an omitted item already has 100 better items on its own owner. Merge candidates with a heap and cache the result. Hot-item partial counters must first merge at its owner; ranking independently salted counts is incorrect. Replicas recover query service from the last complete snapshot.</p>
-<h2>9. Deep dive 2: Windows and replay</h2>
+<h3>Windows and replay</h3>
 <p>N3 deduplicates by tenant/event ID, atomically recording acceptance and an outbox entry before repartitioning by item. Checkpoint bucket state, deduplication progress, and input offsets together. Replay contributes no extra counts. Use event-time buckets with a two-minute watermark delay; publish provisional revisions and corrected revisions for late events. Expose only revisions completed by every partition. If one is missing, retain the older snapshot and expose its age rather than mixing windows. Keep deduplication records beyond the maximum replay and retry horizon.</p>
-<h2>10. Check the design</h2>
-<p>N1/N2 map to dive 1; N3 maps to dive 2. Restart a worker mid-checkpoint and replay a duplicated late event: its count must increase once, every returned item must share a revision, and snapshot age must recover within the freshness target.</p>
+<h3>Check the design</h3>
+<p>N1/N2 map to exact distributed ranking; N3 maps to windows and replay. Restart a worker mid-checkpoint and replay a duplicated late event: its count must increase once, every returned item must share a revision, and snapshot age must recover within the freshness target.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

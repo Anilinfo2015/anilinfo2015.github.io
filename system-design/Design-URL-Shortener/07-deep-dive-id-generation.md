@@ -5,6 +5,10 @@
 The most critical algorithmic challenge in a URL shortener is generating the `short_code`.
 If two users get the same code, one link breaks. If the generation is slow, the write-latency spikes.
 
+> **Reader path — 5. Deep dives (ID generation):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Scaling choices](06-proposed-solutions.md) → ID strategies here → [caching](07-deep-dive-1-caching.md). This expands the [working baseline](04-basic-system-design.md); it does not restart the design.
+
 We need a strategy that is:
 1.  **Unique**: Zero collision probability.
 2.  **Short**: Ideally 6-7 characters.

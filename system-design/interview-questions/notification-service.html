@@ -3,16 +3,19 @@ title: "Design a notification service"
 description: "Durable notification intents, preference checks, and bounded provider retries."
 ---
 <h1>Design a notification service</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> submit email or push notifications; manage recipient channel preferences; inspect delivery status. Each request targets one recipient, with optional fallback from push to email.</p>
-<p><strong>Non-functional assumptions:</strong> N1: acceptance p99 below 200 ms. N2: submit 10 million notifications/day with a tenfold peak. N3: 99% of eligible intents reach a provider within 60 seconds while that provider is healthy. N4: lose zero acknowledged intents after one database-node failure.</p>
-<h2>2. Out of scope</h2>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Submit email or push notifications; manage recipient channel preferences; inspect delivery status. Each request targets one recipient, with optional fallback from push to email.</p>
+<h3>Nonfunctional requirements</h3>
+<p><strong>Assumed targets:</strong> N1: acceptance p99 below 200 ms. N2: submit 10 million notifications/day with a tenfold peak. N3: 99% of eligible intents reach a provider within 60 seconds while that provider is healthy. N4: lose zero acknowledged intents after one database-node failure.</p>
+<h3>Out of scope</h3>
 <p>Exclude campaign audience selection, template editing, inbox rendering, and guaranteed human receipt. A provider's acceptance is not evidence that a person read a message.</p>
-<h2>3. Core entities</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p>Intent has notification ID, tenant, recipient, content reference, and idempotency key. Preference is keyed by (tenant, recipient, channel). Attempt uses (notification ID, channel, attempt number); an outbox row references the intent. The invariant is one logical intent per tenant idempotency key and a recorded outcome for every completed attempt.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /notifications</code> accepts recipient, template variables, allowed channels, and idempotency key; returns 202 with notification ID. A same-key retry returns that ID; different content returns 409. Tenant-scoped service credentials must authorize the recipient namespace and template. Invalid input returns 400; admission throttling returns 429 with Retry-After. <code>PUT /preferences</code> accepts channel settings and expected version, returning the new version or 409; users may change only their own preferences. <code>GET /notifications/{id}</code> returns authorized status and a cursor-paginated attempt history.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Client --> API
@@ -27,14 +30,15 @@ flowchart LR
 <li>A polling worker checks current preferences, records an attempt, and calls the selected provider.</li>
 <li>Record acceptance or failure; try an allowed fallback after definitive failure. Signed provider callbacks update delivery status.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>Synchronous provider calls would simplify status reporting but couple API latency to provider outages. An outbox adds background work and eventual status changes, while keeping acceptance independent. The baseline polling table eventually contends with user-facing reads.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: intent retention and provider capacity</h3>
 <p>Ten million/day is about 116 intents/s average and 1,160/s peak. At 1 KB per intent, retain 10 GB raw/day, excluding payload objects and attempts. Three replicas require 30 GB/day before indexes. Separate payload storage and expire detailed attempts after the agreed retention period; provision workers against peak provider throughput rather than the daily average.</p>
-<h2>8. Deep dive 1: Scheduling delivery</h2>
+<h3>Scheduling delivery</h3>
 <p>N1–N3 use an outbox relay and channel-specific queues partitioned by tenant and recipient hash. Weighted fair queues prevent a large tenant starving others; token buckets enforce provider quotas. Workers use exponential backoff with jitter and a delayed-retry heap, leaving ready work unblocked. Lease expiry recovers crashed workers. Check preferences immediately before dispatch; suppression is terminal, although an already-dispatched message cannot be recalled. Track oldest eligible intent age and shed new traffic with 429 when healthy-provider capacity cannot meet N3.</p>
-<h2>9. Deep dive 2: Durable outcomes</h2>
+<h3>Durable outcomes</h3>
 <p>N4 requires quorum-replicated intent/outbox commits before 202. Derive notification ID and shard deterministically from (tenant, idempotency key); enforce full-key uniqueness there, keeping intent and outbox together. Relays mark progress only after durable enqueue; workers claim attempts conditionally to tolerate duplicate enqueue. Pass stable provider idempotency keys where supported. After an ambiguous timeout, query provider status before retrying or falling back. Without provider deduplication, delivery can duplicate; expose an unknown outcome instead of asserting single delivery. Authenticate callbacks, deduplicate event IDs, and reject state regressions from delayed callbacks.</p>
-<h2>10. Check the design</h2>
-<p>N1–N3 map to dive 1; N4 maps to dive 2. Crash the relay after enqueue but before marking its row: the intent must remain traceable, duplicate work must converge, and a provider outage must not block healthy-channel queues.</p>
+<h3>Check the design</h3>
+<p>N1–N3 map to scheduling delivery; N4 maps to durable outcomes. Crash the relay after enqueue but before marking its row: the intent must remain traceable, duplicate work must converge, and a provider outage must not block healthy-channel queues.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

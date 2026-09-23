@@ -3,21 +3,24 @@ title: "News feed: an interview design"
 description: "A chronological follower feed with bounded fan-out and current visibility checks."
 ---
 <h1>News feed</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> publish public or follower-only posts; follow or unfollow an account; read a reverse-chronological feed.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Publish public or follower-only posts; follow or unfollow an account; read a reverse-chronological feed. Public means readable by any authenticated user, not automatically included in every feed.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 50,000 peak feed reads/second, with p95 below 200 ms for 20-item pages.</li>
   <li><strong>NFR2:</strong> target visibility of new posts within five seconds for 99% of active followers.</li>
   <li><strong>NFR3:</strong> preserve acknowledged posts through one zone failure, without duplicate publication on client retry.</li>
   <li><strong>NFR4:</strong> authorize every returned post against current visibility and relationships; requests checked after an unfollow acknowledgement must exclude that author's follower-only posts.</li>
 </ol>
-<h2>2. Out of scope</h2>
-<p>Recommendations, advertising, media processing, likes, comments, and private-account follow approval are excluded. Public means readable by any authenticated user, not automatically included in every feed.</p>
-<h2>3. Core entities</h2>
+<h3>Out of scope</h3>
+<p>Recommendations, advertising, media processing, likes, comments, and private-account follow approval are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Post(postId, authorId, text, visibility, committedAt)</code>, <code>Follow(viewerId, authorId)</code>, and <code>Inbox(viewerId, postId)</code> form the model. <code>PublishRequest(authorId, key)</code> records retry results. A post has one immutable author; an inbox entry is only a candidate, never proof of permission.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /posts {text, visibility}</code> requires Idempotency-Key and returns <code>201 {postId}</code>; invalid length/visibility returns 422 and changed key payload returns 409. Matching retries return the original post. <code>PUT /me/follows/{authorId}</code> and DELETE return 204 idempotently; nonexistent accounts return 404. <code>GET /me/feed?cursor&amp;limit</code> returns authorized posts and an opaque cursor, capped at 20. All operations require authentication and derive viewer/author from the principal. Cross-user feed access is forbidden. Invalid cursors return 400, overload 429, and unavailable authorization 503.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Client --> FeedAPI
@@ -29,14 +32,15 @@ flowchart LR
   <li>Insert or delete the caller's follow edge.</li>
   <li>Find followed authors, merge their newest posts, apply visibility checks, and paginate by committedAt plus postId.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>Read-time merging has no delivery backlog but becomes expensive for users following thousands of accounts. Write-time fan-out makes reads cheap yet a widely followed author generates enormous bursts. Use a hybrid: precompute ordinary authors' candidates and merge high-fan-out authors at read time. The feed is chronological, not a globally ordered event log.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: candidate storage and follower skew</h3>
 <p>Assume ten million daily users, each reading ten pages/day: 100 million reads/day, or 1,157/second average. Two million posts/day with 200 average followers create 400 million candidate writes/day, about 4,630/second. At 32 bytes/candidate, seven days retain 89.6 GB raw before indexes/replicas. A ten-million-follower author makes the average misleading; exclude such authors from ordinary fan-out.</p>
-<h2>8. Deep dive 1: Bounded fan-out and fast reads</h2>
+<h3>Bounded fan-out and fast reads</h3>
 <p>Publish durable outbox events to workers partitioned by recipient hash. Workers upsert inbox entries keyed by viewerId and postId, so replay is harmless. Split follower lists into checkpointed batches and prioritize active viewers; bound inbox length and reconstruct older pages from author timelines. Read requests merge the inbox with high-fan-out timelines, deduplicate postIds, and apply a cursor cutoff. A newly followed account can be read directly until backfill completes. Measure queue age and fan-out completion percentiles; increase workers or shift expensive authors to read-time merging when the five-second goal is threatened.</p>
-<h2>9. Deep dive 2: Publication durability and privacy</h2>
+<h3>Publication durability and privacy</h3>
 <p>Quorum-replicate posts, retry records, and outbox entries together before acknowledging publication. Replays cannot generate another post for the same author/key. Feed hydration checks authoritative post visibility and current follow edges in batches; cached inbox contents never bypass those checks. Following/unfollowing uses a strongly consistent relationship store, and checks after acknowledgement read its new version. Authorization outages fail closed rather than returning potentially private cached content. Purge obsolete candidates asynchronously to reduce cost, not to establish privacy. Persist backups and test recovery independently of inbox rebuilding.</p>
-<h2>10. Check the design</h2>
-<p>NFR1–2 → dive 1; NFR3–4 → dive 2. Stop fan-out workers after publication, retry the publish, then unfollow: only one post exists, delivery catches up after recovery, and subsequent authorized feed checks omit its follower-only content.</p>
+<h3>Check the design</h3>
+<p>NFR1–2 map to bounded fan-out and fast reads; NFR3–4 map to publication durability and privacy. Stop fan-out workers after publication, retry the publish, then unfollow: only one post exists, delivery catches up after recovery, and subsequent authorized feed checks omit its follower-only content.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

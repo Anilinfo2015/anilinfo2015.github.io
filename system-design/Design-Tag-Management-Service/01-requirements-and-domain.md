@@ -1,7 +1,13 @@
 # Part 1: Requirements & Domain Model
 
-## 1. Introduction: The Sticker on the Skyscraper
 Imagine a library with millions of books but no index. The only way to find "Sci-Fi" is to walk every aisle. That is your content platform without tags.
+
+> **Reader path — stages 1–3:** [Requirements](../interview-questions/tag-management.html#requirements) → [core entities](../interview-questions/tag-management.html#core-entities) → [API or system interface](../interview-questions/tag-management.html#api) · [HLD template](../interview-template.html). The concise answer is a separate scoped walkthrough; assumptions and contracts may differ.
+>
+> **Series:** foundations here → [4. Working baseline](02-basic-system-design.md) → [5. Deep dives](03-deep-dive-scaling.md). Part numbers identify chapters, not additional delivery stages.
+
+<a id="1-introduction-the-sticker-on-the-skyscraper"></a>
+## Introduction: The Sticker on the Skyscraper
 
 Tags appear deceptively simple—just a digital sticky note attached to a Jira issue or a YouTube video. But at scale, this "simple" feature becomes a distributed systems nightmare. When 100 million users start tagging, you face massive write spikes, "hot" tags (like "bug" or "viral"), and queries that need to scan billions of rows in milliseconds.
 
@@ -9,7 +15,12 @@ In this series, we won't just build a tagging system; we'll build a **resilient 
 
 ---
 
-## 2. Requirements: Defining the Problem
+<a id="2-requirements-defining-the-problem"></a>
+<a id="requirements-defining-the-problem"></a>
+## 1. Requirements
+
+### Scope
+The functional MVP covers FR1–FR5 below. Content remains external; this service stores references and tag associations.
 
 ### The Functional MVP (What users see)
 We focus on the essential features that drive value:
@@ -32,7 +43,9 @@ We focus on the essential features that drive value:
 
 ---
 
-## 3. Core Entities & Components
+<a id="3-core-entities--components"></a>
+<a id="core-entities--components"></a>
+## 2. Core entities
 
 To support the data model, we need the following core entities:
 
@@ -43,7 +56,8 @@ To support the data model, we need the following core entities:
 
 ---
 
-## 4. Entity Relationship (ER) Model
+<a id="4-entity-relationship-er-model"></a>
+### Entity Relationship (ER) Model
 
 We normalize the data to reduce redundancy and handle tag renames efficiently.
 
@@ -83,11 +97,14 @@ erDiagram
 
 ---
 
-## 5. API Design
+<a id="5-api-design"></a>
+<a id="api-design"></a>
+## 3. API or system interface
 
 We assume a RESTful approach. All responses use JSON.
 
-### 5.1 POST /v1/content/{content_id}/tags
+<a id="51-post-v1contentcontent_idtags"></a>
+### POST /v1/content/{content_id}/tags
 Adds a tag to a content item.
 
 **Request:**
@@ -106,7 +123,8 @@ Adds a tag to a content item.
 }
 ```
 
-### 5.2 GET /v1/content/{content_id}/tags
+<a id="52-get-v1contentcontent_idtags"></a>
+### GET /v1/content/{content_id}/tags
 Retrieves all tags for a piece of content.
 
 **Response (200 OK):**
@@ -120,7 +138,8 @@ Retrieves all tags for a piece of content.
 }
 ```
 
-### 5.3 GET /v1/tags/{tag_id}/content
+<a id="53-get-v1tagstag_idcontent"></a>
+### GET /v1/tags/{tag_id}/content
 Finds content with a specific tag.
 
 **Query Params:** `?page=1&limit=20`
@@ -137,7 +156,8 @@ Finds content with a specific tag.
 }
 ```
 
-### 5.4 GET /v1/tags/popular
+<a id="54-get-v1tagspopular"></a>
+### GET /v1/tags/popular
 Returns trending tags.
 
 **Response (200 OK):**

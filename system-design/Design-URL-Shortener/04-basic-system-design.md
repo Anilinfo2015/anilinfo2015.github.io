@@ -4,6 +4,10 @@
 
 Before we worry about handling a billion users, we must ensure our system works correctly for just one. This article focuses on the "First Principles" of our design: correctness, data integrity, and solving the fundamental logical challenges of URL shortening.
 
+> **Reader path — 4. High-level design:** [Separate scoped walkthrough](../interview-questions/url-shortener.html#high-level-design) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [API](03-api-design.md) → working baseline here → [5. Deep dives: bottlenecks](05-basic-design-details-tradeoffs.md). Establish the request paths before adding cache, queues, or distributed ID generation.
+
 Our goal is a **Minimum Viable Product (MVP)** that:
 1.  Generates truly unique short codes key.
 2.  Redirection works reliably.
@@ -12,13 +16,39 @@ Our goal is a **Minimum Viable Product (MVP)** that:
 
 ---
 
-## 1. The Critical Challenge: Generating Unique Short Codes
+## 4. High-level design
+
+<a id="3-the-mvp-architecture"></a>
+### The MVP Architecture
+
+For our MVP, a simple, monolithic approach is best. It minimizes operational complexity ("moving parts").
+
+```mermaid
+graph TD
+    User["👤 User"]
+    LB["Load Balancer (Nginx)"]
+    App["API Server (Node.js)"]
+    DB[(PostgreSQL)]
+
+    User -->|HTTPS| LB
+    LB -->|Round Robin| App
+    App -->|SQL Queries| DB
+```
+
+*   **Load Balancer**: Distributes traffic across servers.
+*   **API Server**: Stateless Node.js server. Validates inputs and runs the logic.
+*   **PostgreSQL**: Single "Source of Truth". Handles data storage and enforces uniqueness.
+
+---
+
+<a id="1-the-critical-challenge-generating-unique-short-codes"></a>
+### The Critical Challenge: Generating Unique Short Codes
 
 The heart of a URL shortener is the algorithm that turns a long URL into a short, unique string (e.g., `abc1234`). If two different URLs get the same short code, we have a "Collision," and one user's link will redirect to the wrong place. This is catastrophic.
 
 We have two main strategies to solve this.
 
-### Strategy A: Random String Generation (The "Try & Check" Method)
+#### Strategy A: Random String Generation (The "Try & Check" Method)
 This is intuitive: just roll the dice.
 1.  Generate a random 6-character string from `[a-z, A-Z, 0-9]`.
 2.  Check the database: "Does this code exist?"
@@ -28,7 +58,7 @@ This is intuitive: just roll the dice.
 *   **Pros**: Unpredictable URLs (good for security, competitors can't guess your volume).
 *   **Cons**: As the database fills up, collisions become frequent, leading to multiple retries and slower performance.
 
-### Strategy B: Base62 Conversion (The "Counter" Method)
+#### Strategy B: Base62 Conversion (The "Counter" Method)
 This is the mathematical approach. We treat the database ID as a number and convert it to Base62.
 *   **Base62 Alphabet**: `0-9` (10) + `a-z` (26) + `A-Z` (26) = 62 characters.
 *   **Mechanism**:
@@ -40,12 +70,13 @@ This is the mathematical approach. We treat the database ID as a number and conv
 *   **Pros**: **Zero collisions guaranteed**. Every number maps to exactly one string. It is extremely fast.
 *   **Cons**: Predictable. If a user sees `code: 1C` and next is `code: 1D`, they know you only have small traffic.
 
-### The Verdict for MVP
+#### The Verdict for MVP
 We will use **Strategy B (Base62)** because it eliminates the need for complex collision handling and retries. To fix the "predictability" issue, we can simply start our Database Auto-Increment ID at a large number (e.g., 1,000,000,000) so all codes look like "random" 6-character strings (`15FTGg`).
 
 ---
 
-## 2. Solving Concurrency (The Race Condition)
+<a id="2-solving-concurrency-the-race-condition"></a>
+### Solving Concurrency (The Race Condition)
 
 What happens if two users try to claim the custom alias `summer-sale` at the exact same millisecond?
 
@@ -79,31 +110,10 @@ We catch the error in our code and return a polite "Sorry, taken" message to Use
 
 ---
 
-## 3. The MVP Architecture
+<a id="4-detailed-data-flows"></a>
+### Detailed Data Flows
 
-For our MVP, a simple, monolithic approach is best. It minimizes operational complexity ("moving parts").
-
-```mermaid
-graph TD
-    User["👤 User"]
-    LB["Load Balancer (Nginx)"]
-    App["API Server (Node.js)"]
-    DB[(PostgreSQL)]
-
-    User -->|HTTPS| LB
-    LB -->|Round Robin| App
-    App -->|SQL Queries| DB
-```
-
-*   **Load Balancer**: Distributes traffic across servers.
-*   **API Server**: Stateless Node.js server. Validates inputs and runs the logic.
-*   **PostgreSQL**: Single "Source of Truth". Handles data storage and enforces uniqueness.
-
----
-
-## 4. Detailed Data Flows
-
-### Flow 1: Creating a Link (Write)
+#### Flow 1: Creating a Link (Write)
 1.  **Receive**: `POST /links` with `long_url`.
 2.  **Idempotency Check**: Hash the `long_url` (MD5). Query DB: "Do we have a link with this hash for this User?".
     *   *Why?* prevents users from creating 100 copies of the same link.
@@ -114,7 +124,7 @@ graph TD
     *   *Optimization*: Use a PL/SQL function to do this in one step, or use a pre-generated ID service (discussed in later articles).
 4.  **Respond**: Return `short.app/g7`.
 
-### Flow 2: Redirection (Read)
+#### Flow 2: Redirection (Read)
 1.  **Receive**: `GET /g7`.
 2.  **Lookup**: `SELECT long_url FROM links WHERE short_code = 'g7'`.
 3.  **Validate**:
@@ -128,7 +138,8 @@ graph TD
 
 ---
 
-## 5. MVP Schema Design
+<a id="5-mvp-schema-design"></a>
+### MVP Schema Design
 
 ```sql
 -- 1. Users: Standard account info
@@ -158,11 +169,13 @@ CREATE INDEX idx_long_url_hash ON links(long_url_hash);
 
 ---
 
-## Summary: What we have built
+### Summary: What we have built
 We have a robust system that guarantees:
 *   **Uniqueness**: Via Base62 + Database IDs.
 *   **Integrity**: Via Database Constraints.
 *   **Simplicity**: Easy to debug and deploy.
+
+## 5. Deep dives
 
 **The Problem?**
 It doesn't scale.

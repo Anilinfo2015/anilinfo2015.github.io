@@ -11,13 +11,15 @@ topics: ["Low-Level Design", "Concurrency", "Thread Safety", "Locking"]
 
 > Self-contained. This article is about handling the concurrency question in an LLD interview *proportionally* — enough to prove you see the race, without disappearing into a lock-free rabbit hole that eats your remaining time.
 
+**Stage-focused coaching, not a separate design framework:** establish concurrency constraints in [1. Requirements](interview-template.html#requirements), identify shared-state ownership in the object collaboration of [4. High-level design](interview-template.html#high-level-design), then examine invariants, mechanisms, trade-offs, and tests in [5. Deep dives](interview-template.html#deep-dives). The decision diagrams below guide that focused discussion; they do not replace the shared stages.
+
 Concurrency is where two opposite failures happen. Some candidates ignore it entirely and get dinged for missing an obvious race on the last parking spot. Others hear "what if two users do this at once?" and launch into a 20-minute treatise on memory barriers and lock-free rings, never finishing the design. The senior move is in between: **find the one resource that's actually contended, name a mechanism, state the trade-off, and move on.** This article shows you how to hit that middle reliably.
 
 ---
 
 ## First, ask whether concurrency is even in scope
 
-Half of concurrency questions evaporate if you clarified scope. If you established "single-process, correctness over scale, one user flow," then concurrency may be genuinely out of scope — and saying so is a valid, senior answer: "For a single-threaded simulator this doesn't arise; if it's multi-threaded, here's the one place it bites." Don't invent concurrency the interviewer didn't ask for. But *do* be ready, because "now two users race" is the single most common LLD follow-up.
+Clarify whether calls can overlap; single-process does not mean single-threaded. If you agreed on a single-threaded simulator, concurrent mutation may be genuinely out of scope — and saying so is a valid, senior answer: "For a single-threaded simulator this doesn't arise; if it's multi-threaded, here's the one place it bites." Don't invent concurrency the interviewer didn't ask for. But *do* be ready, because "now two users race" is a common LLD follow-up.
 
 ---
 

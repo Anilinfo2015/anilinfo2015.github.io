@@ -3,6 +3,10 @@
 ## 1. Introduction: The "Counting" Problem
 FR5 asks us to "Show Trending Tags". Sounds easy—just `SELECT tag, count(*) FROM tags GROUP BY tag ORDER BY count DESC`, right?
 
+> **Reader path — 5. Deep dives (popularity and analytics):** [Separate scoped walkthrough](../interview-questions/tag-management.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Scaling](03-deep-dive-scaling.md) → analytics here → [consistency](05-deep-dive-consistency.md). This pipeline expands the [working baseline](02-basic-system-design.md); it is not another numbered delivery framework.
+
 On a dataset of 3 billion records, that query will run for minutes. And while it runs, it locks rows and kills our write performance. We cannot run analytics on our primary transactional database (OLTP). We need a new path.
 
 ---

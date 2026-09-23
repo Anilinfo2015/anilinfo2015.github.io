@@ -1,14 +1,28 @@
 ---
 title: "HLD and LLD interview questions"
-description: "A question catalog with concise designs, shared templates, and a coverage review."
+description: "HLD and LLD worked answers organized by one shared delivery framework."
 ---
 <h1>HLD and LLD interview questions</h1>
-<p>Choose a question, read its requirements, and trace the main operation through the diagram. Each HLD article starts with a working baseline and adds two deep dives. Each LLD article specifies state ownership, method contracts, failure handling, and tests.</p>
+<p>Every worked answer uses the same delivery sequence: requirements → core entities → API or system interface → high-level design → deep dives. A separate data-flow sketch is optional for processing pipelines. HLD applies the sequence to services and storage; LLD applies it to objects, methods, and state ownership.</p>
 <p><a href="system-design/interview-template.html">HLD article template</a> · <a href="low-level-design/interview-template.html">LLD article template</a></p>
+
+<h2>One framework, two levels of design</h2>
+<table>
+<thead><tr><th>Stage</th><th>System design (HLD)</th><th>Low-level design (LLD)</th></tr></thead>
+<tbody>
+<tr><td>1. Requirements</td><td>User actions, latency, scale, durability, consistency, and scope</td><td>Operations, business rules, execution model, complexity, and scope</td></tr>
+<tr><td>2. Core entities</td><td>Records, identities, and relationships</td><td>Objects, responsibilities, state ownership, and invariants</td></tr>
+<tr><td>3. API or system interface</td><td>Endpoints, events, or job contracts</td><td>Public methods, results, errors, and retry semantics</td></tr>
+<tr><td>Data flow (optional)</td><td>Logical input-to-output pipeline before choosing components</td><td>Transformations in a multi-stage component, only when useful</td></tr>
+<tr><td>4. High-level design</td><td>Working baseline with end-to-end service and storage flows</td><td>Working core logic and collaboration between objects</td></tr>
+<tr><td>5. Deep dives</td><td>Bottlenecks, decision-driven estimates, scaling, recovery, and requirement checks</td><td>Trade-offs, extensions, concurrency, failure handling, and concrete tests</td></tr>
+</tbody>
+</table>
+<p>Scope belongs inside requirements, not in a separate delivery stage. Estimates support a decision rather than delay the baseline. Choose deep dives from the requirements; there is no required number of them. Preserve correctness in the baseline before refining performance.</p>
 
 <h2>Coverage review</h2>
 <p>The starting library had five HLD case-study subjects spread across 41 files, plus 19 LLD worked articles and 11 LLD technique guides. HLD lacked short, comparable answers for messaging, feeds, storage, payments, booking, search, and background processing. LLD covered many familiar questions but mixed interview dialogue, implementations, and production discussion; library lending, rentals, inventory, file systems, scheduling, and order matching were missing.</p>
-<p>This catalog brings those gaps into one structure: 24 HLD articles and 26 LLD articles. The longer HLD series remain available. The LLD walkthroughs use the shared template; the technique guides remain separate.</p>
+<p>This catalog brings those gaps into one structure: 24 HLD articles and 26 LLD articles. The longer HLD series expand individual stages, and the LLD technique guides coach delivery of the same sequence. Their existing detail remains available without imposing a different template on the worked answers.</p>
 <p>These are common practice question families, not a frequency ranking or a claim to cover every employer’s question bank. Product names describe familiar prompts, not those companies’ actual implementations. Workload and latency figures are explicit interview assumptions.</p>
 
 <h2>HLD: links, content, and communication</h2>
@@ -95,7 +109,7 @@ description: "A question catalog with concise designs, shared templates, and a c
 </ul>
 
 <h2>Longer studies and interview technique</h2>
-<p>The short HLD answers supplement the existing series on <a href="system-design/Design-URL-Shortener/01-introduction-requirements.html">URL shortening</a>, <a href="system-design/Design-Distributed-Cache/01-introduction-and-requirements.html">distributed caching</a>, <a href="system-design/Design-Web-Crawler/01-foundations.html">web crawling</a>, <a href="system-design/design-youtube/01-foundations.html">YouTube</a>, and <a href="system-design/Design-Tag-Management-Service/01-requirements-and-domain.html">tag management</a>.</p>
-<p>The separate <a href="low-level-design/00-the-45-minute-lld-framework.html">LLD interview playbook</a> covers interview technique. Its coaching format is different from the worked answers here.</p>
-<h2>Reference frameworks</h2>
-<p>The templates use Hello Interview’s public <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">HLD delivery framework</a> and <a href="https://www.hellointerview.com/learn/low-level-design/in-a-hurry/delivery">LLD delivery framework</a> as structural references. The articles are original, scoped solutions. No public source establishes a complete list of frequently asked questions.</p>
+<p>The short HLD answers supplement the existing series on <a href="system-design/Design-URL-Shortener/01-introduction-requirements.html">URL shortening</a>, <a href="system-design/Design-Distributed-Cache/01-introduction-and-requirements.html">distributed caching</a>, <a href="system-design/Design-Web-Crawler/01-foundations.html">web crawling</a>, <a href="system-design/design-youtube/01-foundations.html">YouTube</a>, and <a href="system-design/Design-Tag-Management-Service/01-requirements-and-domain.html">tag management</a>. Chapter navigation identifies the delivery stage and links to a separate scoped walkthrough; the longer studies can make different workload assumptions.</p>
+<p>The <a href="low-level-design/00-the-45-minute-lld-framework.html">LLD interview playbook</a> explains how to deliver the five stages. Its focused guides cover requirements, modeling, interfaces, working flows, and deep dives rather than introduce an alternative article structure.</p>
+<h2>Reference framework</h2>
+<p>Both templates use <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">Hello Interview’s system-design delivery framework</a> as their structural reference. The LLD mapping is this repository’s adaptation; the explanations and scoped solutions are original. No public source establishes a complete list of frequently asked questions.</p>

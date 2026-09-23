@@ -5,6 +5,8 @@ If you internalize this cheatsheet, you’ll cover the majority of real-world sy
 
 This is not “what is a load balancer” material. This is the stuff that decides whether your system survives its first incident.
 
+Use this as a reference alongside the [shared delivery framework](../system-design/interview-template.html): requirements → core entities → API or system interface → high-level design → deep dives. The numbered topics below are a lookup catalog, not delivery stages. Start with a working baseline, then select only the patterns needed by its requirements and bottlenecks.
+
 ---
 
 ## 0) The One-Minute Mental Model
@@ -31,7 +33,12 @@ If you can answer these 8 questions, you’re already “senior” in system des
 
 ---
 
-## 1) First 10 Minutes: Frame the Problem Like an Architect
+<a id="1-first-10-minutes-frame-the-problem-like-an-architect"></a>
+<a id="first-10-minutes-frame-the-problem-like-an-architect"></a>
+
+## 1) Requirements: Frame the Problem Before Designing
+
+List the essential user actions and out-of-scope features, then agree on the quality constraints below. Use workload assumptions now; defer capacity arithmetic until it informs a concrete decision.
 
 ### Workload profile (write this down)
 - Read/write ratio (e.g., 90/10)
@@ -276,15 +283,13 @@ Abuse patterns to plan for:
 
 ## 13) A Compact “Design Interview” Script (Repeatable)
 
-1. Requirements + SLOs
-2. APIs + core entities
-3. High-level architecture
-4. Data model + storage choice
-5. Consistency + failure modes
-6. Scaling strategy (shards, caches, async)
-7. Observability + ops + migrations
+1. **Requirements:** essential features, non-functional targets, and out-of-scope work.
+2. **Core entities:** identities, relationships, and invariants; refine the storage schema when needed.
+3. **API or system interface:** inputs, outputs, errors, ownership, and retry semantics.
+4. **High-level design:** a working baseline and end-to-end flows for the requirements. For a processing pipeline, first sketch an optional logical data flow between stages 3 and 4.
+5. **Deep dives:** select bottlenecks from the baseline and requirements. Use decision-driven estimates, consistency and recovery mechanisms, scaling, observability, and migrations where relevant; finish by checking requirement coverage.
 
-If you can do this smoothly, you will look like someone who has shipped production systems.
+This is the same sequence used by the [worked HLD and LLD answers](../interview-guide.html). In LLD, the baseline is object collaboration and core logic; deep dives cover implementation trade-offs, concurrency, and concrete tests.
 
 ---
 
@@ -311,4 +316,3 @@ To go from “knows patterns” to “expert”:
 5. Design migrations.
 
 That’s how you build real instincts.
-

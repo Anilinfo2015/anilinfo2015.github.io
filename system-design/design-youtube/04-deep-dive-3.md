@@ -2,6 +2,10 @@
 
 A creator updates their video title from "Tutorial" to "Advanced JavaScript Tutorial for Beginners (2024)". They hit save. One millisecond later, the API responds: "Title updated." But when they search for "Advanced JavaScript Tutorial", nothing appears. A friend searching finds the old title. The video info page shows the new title.
 
+> **Reader path — 5. Deep dives (metadata consistency):** [Separate scoped video-streaming walkthrough](../interview-questions/video-streaming.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Transcoding](03-deep-dive-2.md) → metadata/search consistency here → [production readiness](05-production-readiness.md). This broader video-platform expansion does not redefine the [Top-K baseline's](01-foundations.md) entities or API.
+
 Welcome to the distributed systems version of hell: **data consistency across multiple databases.**
 
 At YouTube's scale, video metadata lives in multiple places:

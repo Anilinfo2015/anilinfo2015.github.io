@@ -2,14 +2,20 @@
 
 This note turns a real interview-style evaluation into a checklist + drills you can reuse.
 
+> **Reader path — 5. Deep dives (practice companion):** [Separate scoped walkthrough](../interview-questions/distributed-cache.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Requirements → entities → interface](01-introduction-and-requirements.md) → [working baseline](02-mvp-architecture.md) → [scaling](03-scaling-challenges.md) and [production](06-production-mastery.md) → drills here. The numbered notes are practice topics, not a competing delivery pipeline.
+
 ---
 
-## 1) The Feedback (verbatim, condensed)
+<a id="1-the-feedback-verbatim-condensed"></a>
+<a id="the-feedback-verbatim-condensed"></a>
+## 1) The Feedback (adapted to the delivery framework)
 
 **Summary**: Strong Senior. For Staff, show more proactive system-wide bottleneck detection, tighter terminology, and deeper node-level internals.
 
 **Key gaps called out**:
-- **Back-of-envelope first**: Capacity/scale math (e.g., 50TB → hundreds of nodes) should drive the architecture up front.
+- **Decision-driven estimates**: Capacity/scale math (e.g., 50TB → hundreds of nodes) should inform a routing or partitioning choice. Clarify requirements first; keep standalone sizing in deep dives unless an earlier design decision needs it.
 - **Concurrency internals**: Strict LRU + doubly-linked list lock contention is a classic trap.
 - **Terminology precision**: Don’t say *leaderless* while describing a *primary/replica* write path.
 - **Stampede mechanics**: Refresh-ahead alone isn’t the most robust protection; request coalescing (singleflight) should show up early.
@@ -20,8 +26,9 @@ This note turns a real interview-style evaluation into a checklist + drills you 
 
 Use this as an internal script during the interview:
 
-### A. Start with the forcing functions (numbers)
-You should be able to say within the first 5–10 minutes:
+<a id="a-start-with-the-forcing-functions-numbers"></a>
+### A. Size the decision, not a separate interview stage
+After establishing requirements and a working baseline, use the following estimates to choose the scaling approach. Bring an estimate forward only when it changes an earlier decision:
 - **Data size**: $\text{Total bytes} = \text{items} \times \text{avg item size}$ (+ overhead)
 - **Working set**: what fraction must be “hot” in cache?
 - **Node count** (rough):
@@ -104,8 +111,9 @@ Your “stampede toolkit” list should include:
 
 ## 6) Practice Drills (repeatable)
 
-### Drill A — 5-minute math opener
-Pick a scenario and do:
+<a id="drill-a--5-minute-math-opener"></a>
+### Drill A — 5-minute decision-driven sizing
+Pick a bottleneck in the baseline and use these estimates to justify a change:
 1) data size, replication factor, node count
 2) QPS per node
 3) bandwidth sanity check (peak value size * miss rate)

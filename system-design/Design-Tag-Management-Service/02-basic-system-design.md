@@ -1,13 +1,21 @@
 # Part 2: Basic System Design (MVP)
 
-## 1. Introduction: Start Simple, Then Break It
 Before we worry about sharding and eventual consistency, let's solve the core problem. How do we store a tag?
+
+> **Reader path — stages 4–5:** [High-level design](../interview-questions/tag-management.html#high-level-design) → [deep dives](../interview-questions/tag-management.html#deep-dives) · [HLD template](../interview-template.html). The concise answer is a separate scoped walkthrough; assumptions and contracts may differ.
+>
+> **Series:** [Requirements, entities, and API](01-requirements-and-domain.md) → working baseline here → [scaling](03-deep-dive-scaling.md). Baseline limitations and optional typeahead belong to stage 5.
+
+<a id="1-introduction-start-simple-then-break-it"></a>
+## Introduction: Start Simple, Then Break It
 
 Refusing to over-engineer at the start is a seniority signal. We begin with a **Minimum Viable Product (MVP)**—a clean, monolithic design that satisfies the functional requirements. This establishes a baseline so we can see exactly where it breaks when we add load.
 
 ---
 
-## 2. High-Level Architecture (The Naive Approach)
+<a id="2-high-level-architecture-the-naive-approach"></a>
+<a id="high-level-architecture-the-naive-approach"></a>
+## 4. High-level design
 
 For the MVP, we use the industry standard "boring" stack:
 1.  **Stateless Service**: A standard REST API (Go/Java).
@@ -30,14 +38,15 @@ graph LR
 
 ---
 
-## 3. Basic Design Details
+<a id="3-basic-design-details"></a>
+### Basic Design Details
 
-### Component Breakdown
+#### Component Breakdown
 *   **Tag API Service**: A Go/Java microservice. It handles validation (e.g., tag length), normalization (lowercase), and DB transactions.
 *   **PostgreSQL**: Handles relational data. Good consistency/ACID guarantees are helpful for the `TAG` + `CONTENT_TAG` writes.
 *   **Redis**: Caches the "GET tags for content" response to offload the DB.
 
-### Write Path: Adding a Tag (FR1)
+#### Write Path: Adding a Tag (FR1)
 1.  User sends `POST /content/123/tags` with `tag_name="Urgent"`.
 2.  **App**: Normalizes "Urgent" -> "urgent".
 3.  **App**: Checks if "urgent" exists in `TAG` table.
@@ -45,13 +54,6 @@ graph LR
     *   If yes: Get existing ID.
 4.  **App**: `INSERT INTO CONTENT_TAG (content_id, tag_id) ...`
 5.  **App**: Returns success.
-
-### 3.1 Bonus: Implementing Typeahead (Autocomplete)
-Users expect suggestions as they type "urg...". We can't run `LIKE 'urg%'` on Postgres at scale.
-*   **Solution**: Redis Sorted Sets (`ZSET`).
-*   **Mechanism**: Store all tags in a ZSET with `score=0`.
-*   **Query**: Use `ZRANGEBYLEX [urg [urg\xff` to find all strings starting with "urg".
-*   **Why**: It's O(log(N)) + M, extraordinarily fast (microseconds) for prefix lookups.
 
 ```mermaid
 sequenceDiagram
@@ -71,7 +73,7 @@ sequenceDiagram
     S-->>U: Tag Added 201
 ```
 
-### Read Path: Get Content Tags (FR3)
+#### Read Path: Get Content Tags (FR3)
 1.  User sends `GET /content/123/tags`.
 2.  **App**: Check Redis key `content:123:tags`.
 3.  **Cache Hit**: Return JSON immediately.
@@ -82,7 +84,10 @@ sequenceDiagram
 
 ---
 
-## 4. Basic Design Limitation/Tradeoffs
+## 5. Deep dives
+
+<a id="4-basic-design-limitationtradeoffs"></a>
+### Basic Design Limitation/Tradeoffs
 
 This MVP works well for ~1,000 requests/sec. But at our target scale (100k reads/sec, 50k writes/sec), it breaks:
 
@@ -92,3 +97,11 @@ This MVP works well for ~1,000 requests/sec. But at our target scale (100k reads
 4.  **Single Point of Failure**: One DB instance means zero redundancy.
 
 These limitations set the stage for our **Deep Dives** in the next parts of the series.
+
+<a id="31-bonus-implementing-typeahead-autocomplete"></a>
+### Bonus: Implementing Typeahead (Autocomplete)
+Users expect suggestions as they type "urg...". We can't run `LIKE 'urg%'` on Postgres at scale.
+*   **Solution**: Redis Sorted Sets (`ZSET`).
+*   **Mechanism**: Store all tags in a ZSET with `score=0`.
+*   **Query**: Use `ZRANGEBYLEX [urg [urg\xff` to find all strings starting with "urg".
+*   **Why**: It's O(log(N)) + M, extraordinarily fast (microseconds) for prefix lookups.

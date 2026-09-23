@@ -3,6 +3,10 @@
 ## 1. Introduction: Embracing Chaos
 In a distributed system, "perfect" running conditions are a myth. At our scale, servers *will* die. Networks *will* partition.
 
+> **Reader path — 5. Deep dives (consistency and recovery):** [Separate scoped walkthrough](../interview-questions/tag-management.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Analytics](04-deep-dive-analytics.md) → failure handling here → [security and operations](06-security-and-ops.md). Evaluate these choices against the [working baseline](02-basic-system-design.md).
+
 The question isn't "how do we prevent failure?", but "how does the system behave when it fails?" This section explores the resilience patterns that keep the lights on.
 
 ---

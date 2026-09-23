@@ -4,6 +4,10 @@
 
 In the previous system design steps, we started with PostgreSQL. It’s a great choice for reliable, relational data. But as we scale to billions of URLs, we hit a wall.
 
+> **Reader path — 5. Deep dives (database choice):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Asynchronous processing](08-deep-dive-2-async-everything.md) → storage trade-offs here → [reusable patterns](10-reusable-patterns.md). Evaluate these alternatives against the [working baseline](04-basic-system-design.md).
+
 **The PostgreSQL Problem:**
 1.  **Writes**: A single Primary node can only handle ~5,000 writes/second.
 2.  **Sharding**: To go beyond that, we have to "shard" (split) the database.

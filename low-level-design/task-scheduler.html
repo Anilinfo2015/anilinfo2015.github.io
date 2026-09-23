@@ -4,13 +4,18 @@ description: "Durable due-time scheduling with leases, bounded retries, and expl
 ---
 <h1>Task Scheduler</h1>
 
-<h2>1. Requirements</h2>
-<p>Schedule one-off named jobs, claim due work, report completion or failure, and cancel jobs not yet running. Multiple workers share a transactional database. Store UTC instants and use database time for eligibility. Payloads are at most 64 KiB; claims return at most 100 jobs. Indexed polling should inspect due rows rather than scan all completed history.</p>
+<p>LLD stages: <a href="#requirements">Requirements</a> → <a href="#core-entities">Core entities</a> → <a href="#api">API or system interface</a> → <a href="#high-level-design">High-level design</a> → <a href="#deep-dives">Deep dives</a>.</p>
 
-<h2>2. Out of scope</h2>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Schedule one-off named jobs, claim due work, report completion or failure, and cancel jobs not yet running. Store UTC instants and use database time for eligibility.</p>
+<h3>Non-functional and execution constraints</h3>
+<p>Multiple workers share a transactional database. Payloads are at most 64 KiB; claims return at most 100 jobs. Indexed polling should inspect due rows rather than scan all completed history. Durable job and lease transitions support recovery after worker or scheduler failure.</p>
+
+<h3>Out of scope</h3>
 <p>Exclude cron expressions, dependency graphs, priorities, arbitrary uploaded code, and forced interruption of running handlers. Handlers come from a fixed registry. The scheduler promises retryable execution, not exactly-once effects. Jobs may fail permanently after their configured attempt limit.</p>
 
-<h2>3. Model and invariants</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Scheduler</code> owns job transitions in storage. <code>Job</code> owns handler name, immutable payload, due time, state, attempt count, maximum attempts, and lease generation. <code>Lease</code> records worker, token, and expiry. States are <code>READY</code>, <code>RUNNING</code>, <code>SUCCEEDED</code>, <code>FAILED</code>, and <code>CANCELLED</code>.</p>
 <pre class="mermaid">
 classDiagram
@@ -24,19 +29,21 @@ classDiagram
 </pre>
 <p>Only one lease is current for a job. Its validity interval is [claimedAt,expiresAt); stale tokens cannot update state. Attempts increase on claim, never on heartbeat. Terminal jobs cannot be claimed.</p>
 
-<h2>4. Public contract</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>schedule(handler, payload, dueAt, maxAttempts, key) → Job</code> returns <code>UnknownHandler</code>, <code>InvalidInput</code>, <code>PayloadTooLarge</code>, or <code>KeyConflict</code>; maxAttempts must be 1–10. Identical key/payload returns the original job. <code>claim(workerId, limit) → Lease[]</code> rejects invalid limits with <code>InvalidInput</code>. <code>heartbeat(jobId, token)</code>, <code>complete(jobId, token)</code>, and <code>fail(jobId, token, errorCode)</code> return updated state or <code>NotFound</code>/<code>StaleLease</code>. An identical completion retry for the successful token returns success. <code>cancel(jobId) → Job</code> is idempotent for cancelled jobs, returns <code>NotFound</code> for unknown IDs, <code>Busy</code> for running jobs, and <code>InvalidState</code> for other terminal states.</p>
 
-<h2>5. Core flow</h2>
-<p>Claim selects READY rows with dueAt ≤ databaseNow, ordered by due time then ID, using row locks with skip-locked behavior. Increment attempts, create a new token, set a 30-second expiry, and commit before invoking handlers outside the transaction.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<p><code>Scheduler.schedule</code> validates the handler against <code>HandlerRegistry</code> and checks payload, time, and attempt bounds. It atomically inserts a READY <code>Job</code> with zero attempts and the request's deduplication result, or returns the existing identical request.</p>
+<p><code>Scheduler.claim</code> selects READY rows with dueAt ≤ databaseNow, ordered by due time then ID, using row locks with skip-locked behavior. Increment attempts, create a new <code>Lease</code> token, set a 30-second expiry, and commit. The worker resolves the named handler from the registry and invokes it outside the transaction, then reports completion or failure through the scheduler interface.</p>
 <p>A valid heartbeat renews expiry to databaseNow plus 30 seconds. Completion records success only if token and unexpired lease match. Failure clears the lease and either marks FAILED at the attempt limit or sets READY with dueAt equal to now plus <code>min(300, 2^(attempts−1))</code> seconds. A recovery sweep applies that same failure transition to expired RUNNING jobs. It locks and rechecks each row so heartbeat, completion, and expiry cannot all win.</p>
 
-<h2>6. Trade-offs and extensions</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and extensions</h3>
 <p>Leases recover crashed workers but allow overlapping physical executions when an old worker continues after expiry. A resource that supports fencing can reject effects from older generations. Recurrence should create separately identified occurrences rather than repeatedly resetting one completed job.</p>
 
-<h2>7. Concurrency and failure handling</h2>
+<h3>Concurrency and failure handling</h3>
 <p>Row locks protect claim and lease transitions; durable rows survive scheduler restarts. Worker failure after an external effect but before completion causes possible replay. Pass job ID as the effect's idempotency key when supported. Otherwise handlers must reconcile duplicates themselves. No database lease can roll back an already-sent payment or email.</p>
 
-<h2>8. Test cases</h2>
+<h3>Test cases</h3>
 <p>A job due at 12:00 becomes claimable exactly then. Two workers claim it once. A completion at expiresAt is stale. With maxAttempts=2, two claimed failures produce FAILED. A crash after claim makes the job retryable only after expiry and backoff. Repeated successful completion creates no transition. Oversized payloads and limit 101 fail before database work; verify the due-state index serves claim queries.</p>
 <p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

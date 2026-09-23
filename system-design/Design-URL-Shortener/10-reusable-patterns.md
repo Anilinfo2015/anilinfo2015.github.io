@@ -5,6 +5,10 @@
 We've built a system that handles billions of clicks. But the real value isn't the URL shortener itself; it's the *patterns* we used to build it.
 These are the "Lego Blocks" of scalable systems. If you master these, you can design Youtube, Twitter, or Uber.
 
+> **Reader path — 5. Deep dives (reusable patterns):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Database choices](09-deep-dive-3-dynamodb.md) → patterns here → [security](11-security.md). Select patterns for bottlenecks in the [working baseline](04-basic-system-design.md), rather than treating this list as another design sequence.
+
 ---
 
 ## 1. The Bloom Filter
