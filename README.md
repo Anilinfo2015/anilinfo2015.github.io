@@ -152,6 +152,19 @@ A 6-part deep dive into building a distributed web crawler processing billions o
 | 5 | [Security & Trust](system-design/Design-Web-Crawler/05-security-auth.md) | Authentication, abuse prevention, compliance |
 | 6 | [Production Readiness](system-design/Design-Web-Crawler/06-production-readiness.md) | SLOs, observability, reliability |
 
+### 📨 Designing a Distributed Message Queue
+
+A 6-part deep dive into building a partitioned, replicated, Kafka-style event streaming platform:
+
+| Part | Title | Key Concepts |
+|------|-------|--------------|
+| 1 | [Foundations](system-design/Design-Message-Queue/01-foundations.md) | Requirements, capacity math, core data model, API, high-level design |
+| 2 | [The Log Storage Engine](system-design/Design-Message-Queue/02-log-storage-engine.md) | Append-only log, segments, sparse index, retention, compaction, zero-copy |
+| 3 | [Partitioning & Ordering](system-design/Design-Message-Queue/03-partitioning-and-ordering.md) | Key hashing, consumer parallelism, hot partitions, drain-and-cutover |
+| 4 | [Replication & Durability](system-design/Design-Message-Queue/04-replication-and-durability.md) | ISR, acks, high-water mark, leader epochs, clean failover |
+| 5 | [Delivery Semantics](system-design/Design-Message-Queue/05-delivery-semantics.md) | At-least/exactly-once, consumer groups, idempotent producer, transactions |
+| 6 | [Production Readiness](system-design/Design-Message-Queue/06-production-readiness.md) | Quotas, observability, tiered & multi-region storage, security |
+
 ---
 
 ## 🏷️ Key Topics
