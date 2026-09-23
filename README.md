@@ -71,7 +71,7 @@ Whether you're preparing for FAANG interviews, architecting your next startup, o
 
 ### HLD and LLD interview questions
 
-Start with the [question catalog](interview-guide.html), which groups 24 HLD
+Start with the [question catalog](interview-guide.html), which groups 30 HLD
 and 26 LLD articles by the problem they cover. The [HLD template](system-design/interview-template.html)
 and [LLD template](low-level-design/interview-template.html) use the same delivery sequence:
 **requirements → core entities → API or system interface → high-level design → deep dives**.

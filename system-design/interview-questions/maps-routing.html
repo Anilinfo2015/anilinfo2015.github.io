@@ -1,0 +1,50 @@
+---
+title: "Maps and routing: an interview design"
+description: "Tiled maps and precomputed, traffic-aware shortest paths."
+---
+<h1>Maps and routing</h1>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#data-flow">Data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Given an origin and destination, return a driving route with distance and estimated time; render map tiles for a viewport; recompute a route when the driver deviates.</p>
+<h3>Nonfunctional requirements</h3>
+<ol>
+  <li><strong>NFR1:</strong> assume 20,000 peak route requests/second, with route p99 below 300 ms for intra-metro trips and tile p99 below 50 ms.</li>
+  <li><strong>NFR2:</strong> reflect major closures and traffic in estimates within a few minutes, and return only valid routes that respect connectivity and turn restrictions.</li>
+  <li><strong>NFR3:</strong> keep serving tiles and routes through one zone failure, degrading to traffic-free estimates rather than failing.</li>
+  <li><strong>NFR4:</strong> enforce per-key quotas and do not retain an individual user's trajectory beyond the request without consent.</li>
+</ol>
+<h3>Out of scope</h3>
+<p>Turn-by-turn voice guidance, indoor maps, map-data licensing, and multi-modal transit routing are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p><code>RoadGraph(nodeId, edges[weight, restrictions])</code> is a directed graph with turn rules. <code>Tile(z, x, y, blob)</code> is a pre-rendered map image, <code>TrafficOverlay(edgeId, speed, asOf)</code> is a time-varying weight layer, and <code>RouteResult(geometry, distanceM, etaS, steps)</code> is the answer. Traffic is an overlay on edge weights, not a change to the graph topology.</p>
+<h2 id="api">3. API or system interface</h2>
+<p><code>GET /route?from=lat,lng&amp;to=lat,lng&amp;depart=now</code> returns <code>{geometry, distanceM, etaS, steps}</code>. <code>GET /tiles/{z}/{x}/{y}.pbf</code> returns a vector tile. Return 400 for invalid coordinates, 422 when no route exists, and 429 when a key exceeds its quota. Tiles are cacheable and CDN-friendly; a traffic-dependent route uses <code>Cache-Control: private</code>.</p>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>Raw map data is compiled into a partitioned graph with precomputed shortcuts and into a tile pyramid. At query time the service snaps the origin and destination to the nearest routable edges, runs a shortest path over the graph using current traffic weights, and assembles geometry and an estimate. Probe data flows through an ingestion pipeline that updates edge speeds.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> TileCDN
+    Client --> RoutingService
+    RoutingService --> GraphIndex
+    RoutingService --> TrafficStore
+    TrafficStore --> IngestPipeline
+</pre>
+<ol>
+  <li>Tiles are served from a CDN over a pre-rendered pyramid, with misses hitting the renderer.</li>
+  <li>Routing snaps the endpoints, then runs a shortest path over the precomputed graph with live traffic weights.</li>
+  <li>An ingestion pipeline aggregates probe data into per-edge speeds for the traffic overlay.</li>
+</ol>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
+<p>Plain Dijkstra over a continental graph is too slow per request; precomputation such as contraction hierarchies or customizable route planning turns a query into a short settled search, at the cost of a heavy build and a re-customization step when weights change. Static tiles cache trivially on a CDN, but a traffic-dependent route cannot be cached for long. Partitioning the graph by region enables parallel builds but needs boundary handling for cross-region trips.</p>
+<h3>Scale estimate: query cost and memory</h3>
+<p>At 20,000 routes/second, a contraction-hierarchy query settles hundreds of nodes rather than the millions a plain search would, so per-query CPU is a few milliseconds and fleet sizing is dominated by graph replicas held in RAM. A continental graph of about 100 million nodes at roughly 64 bytes each is about 6.4 GB plus shortcuts, which fits in memory per replica, so scale routing by read replicas. Tiles are static, and a CDN absorbs 100,000 or more tile requests/second at a high hit rate, so only misses reach the renderer.</p>
+<h3>Traffic-aware routing and freshness</h3>
+<p>Model traffic as a per-edge speed overlay refreshed from aggregated probe data every minute, and read current weights at query time rather than rebuilding the graph. Because changing weights would invalidate contraction shortcuts, use customizable route planning so a traffic update re-customizes the metric in seconds without recomputing the topology. When the overlay is stale or unavailable, fall back to free-flow speeds and label the estimate as traffic-free rather than failing the request.</p>
+<h3>Correctness, partitioning, and failure</h3>
+<p>Snap each endpoint to the nearest routable edge with a spatial index such as an R-tree or a geohash grid, and reject a point with no nearby road with 422. Encode turn restrictions and one-way edges in the graph so every returned route is legal. Partition the graph into regional cells with a small overlay of boundary nodes, so a cross-region query stitches cell routes without loading the whole planet. Replicate graph and tiles across zones so a zone loss shifts reads to replicas, and keep no per-user trajectory after the response unless the user consents.</p>
+<h3>Check the design</h3>
+<p>NFR1 maps to the precomputed graph and CDN tiles; NFR2 to per-minute traffic customization and encoded restrictions; NFR3 to replicated replicas with a free-flow fallback; NFR4 to key quotas and no trajectory retention. Test it by dropping the traffic store: routes still return with labeled free-flow estimates. Mark an edge impassable and confirm later routes avoid it within the customization interval; verify a cross-region route matches the single-graph answer on a test map.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

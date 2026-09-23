@@ -1,0 +1,47 @@
+---
+title: "Distributed key-value store: an interview design"
+description: "Tunable-quorum replication with conflict resolution and repair."
+---
+<h1>Distributed key-value store</h1>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Support <code>get</code>, <code>put</code>, and <code>delete</code> on a single opaque key holding opaque bytes; let a request choose its read and write consistency. Operations are single-key only.</p>
+<h3>Nonfunctional requirements</h3>
+<ol>
+  <li><strong>NFR1:</strong> assume 200,000 peak operations/second and values up to 1 MB, with p99 below 10 ms for a single-key get within one region.</li>
+  <li><strong>NFR2:</strong> survive one node and one zone failure with no loss of acknowledged writes, and expose no single point of failure.</li>
+  <li><strong>NFR3:</strong> offer per-request tunable consistency and converge replicas after concurrent or partitioned writes.</li>
+  <li><strong>NFR4:</strong> authenticate every request to a namespace and isolate each tenant's keyspace and quota.</li>
+</ol>
+<h3>Out of scope</h3>
+<p>Multi-key transactions, secondary indexes, range scans, and a query language are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p><code>Key</code> maps to a <code>VersionedValue(bytes, versionVector, tombstone)</code>. <code>Partition(tokenRange, replicaSet)</code> assigns each key to N replicas by consistent hashing, and <code>RingMembership(nodeId, virtualTokens, state)</code> tracks the cluster. A delete is a versioned tombstone, never a silent removal, so a late replica cannot resurrect deleted data.</p>
+<h2 id="api">3. API or system interface</h2>
+<p><code>PUT /kv/{ns}/{key}?w=W</code> with a body returns <code>200 {version}</code> once W replicas acknowledge. <code>GET /kv/{ns}/{key}?r=R</code> returns the reconciled value and version, or 404. <code>DELETE /kv/{ns}/{key}?w=W</code> writes a tombstone. Return 503 when fewer than the requested quorum respond, rather than acknowledging a non-durable write. R and W are chosen against the replication factor N; R+W&gt;N gives read-your-writes. Every request is authenticated and scoped to its namespace.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> CoordinatorNode
+    CoordinatorNode --> Replica1
+    CoordinatorNode --> Replica2
+    CoordinatorNode --> Replica3
+</pre>
+<ol>
+  <li>Any node acts as coordinator: it hashes the key to its N replicas and forwards the operation.</li>
+  <li>A write waits for W acknowledgements; a read gathers R responses and reconciles them by version.</li>
+  <li>Gossiped membership keeps the token ring converged as nodes join and leave.</li>
+</ol>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
+<p>Consistent hashing with virtual nodes spreads load and limits reshuffling when membership changes, but a hot key still concentrates on one replica set and there is no cross-key transaction. Quorum reads and writes with R+W&gt;N give read-your-writes at higher latency; R=W=1 is fast but may read stale data. Leaderless replication avoids failover stalls but requires conflict resolution, whereas a single leader per partition simplifies conflicts at the cost of failover pauses.</p>
+<h3>Scale estimate: replica traffic and storage</h3>
+<p>At 200,000 operations/second with N=3, replicas exchange up to 600,000 messages/second. Assuming 1 KB average values and half writes, write ingress is about 100,000/second times 1 KB times three replicas, roughly 300 MB/second across the cluster. A 100 TB logical dataset stored three times is 300 TB; at 4 TB per node that is about 75 storage nodes before headroom. Using 256 virtual nodes per node keeps the range moved on a single join near one seventy-fifth of the data.</p>
+<h3>Consistency, conflicts, and repair</h3>
+<p>Tag each write with a per-key version vector. A read returns the value that dominates; concurrent writes surface as siblings resolved by a physical-timestamp last-writer-wins rule or by an application merge. Heal divergence three ways: read-repair when a stale replica answers, hinted handoff when a replica is briefly unreachable, and background Merkle-tree anti-entropy for durable drift. Garbage-collect tombstones only after a grace period longer than the maximum tolerated replica downtime, or a delete can be undone by a lagging node.</p>
+<h3>Membership, partitioning, and failure</h3>
+<p>Nodes gossip ring state and a coordinator routes by token. When a node is lost, its ranges are served by the next replicas and hinted writes replay on its return. A sloppy quorum keeps writes available during partitions but can break R+W&gt;N, so expose it as an explicit lower-consistency mode rather than a silent default. Rebalancing streams only the affected virtual-node ranges to avoid a global reshuffle. Writes fail closed with 503 when W replicas are unreachable, so the store never acknowledges data it cannot make durable.</p>
+<h3>Check the design</h3>
+<p>NFR1 maps to in-region quorums; NFR2 to N of at least three across zones with hinted handoff; NFR3 to per-request R and W with version-vector reconciliation; NFR4 to namespace authentication and quotas. Test it by partitioning one replica during a put with W=2 and then reading with R=2: the write must be visible. Kill the coordinator mid-write and retry: the client must not observe a lost acknowledged value.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

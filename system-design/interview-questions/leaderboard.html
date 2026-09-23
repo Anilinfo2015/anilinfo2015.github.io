@@ -1,0 +1,47 @@
+---
+title: "Leaderboard: an interview design"
+description: "Real-time ranked scores with exact rank and idempotent updates."
+---
+<h1>Leaderboard</h1>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Record a player's score change; read a player's score and rank; read the top N; read a window of players around a given player. Scope the design to one leaderboard, such as a game mode, with periodic resets.</p>
+<h3>Nonfunctional requirements</h3>
+<ol>
+  <li><strong>NFR1:</strong> assume 100,000 score updates/second and 50,000 rank reads/second, with p99 below 100 ms for top-N and for a player's own rank.</li>
+  <li><strong>NFR2:</strong> reflect an update in ranks within two seconds for 99% of updates, with deterministic tie-breaking so ordering is exact.</li>
+  <li><strong>NFR3:</strong> preserve acknowledged score events through one zone failure and apply each event once, so a retry never double-counts.</li>
+  <li><strong>NFR4:</strong> authorize score writes to the owning player or service and validate deltas to resist tampering.</li>
+</ol>
+<h3>Out of scope</h3>
+<p>Anti-cheat modeling, aggregation across leaderboards, and historical replay beyond the current period are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p><code>Leaderboard(id, period, resetAt)</code> holds many <code>Score(playerId, value, updatedAt)</code> rows, ordered by a sorted structure. <code>ScoreEvent(eventId, delta)</code> records each change for idempotency. Rank is derived from the sorted order of (value, tiebreak), and an eventId is applied at most once.</p>
+<h2 id="api">3. API or system interface</h2>
+<p><code>POST /leaderboards/{id}/scores {playerId, delta, eventId}</code> returns <code>200 {value}</code>; reusing an eventId with a different delta returns 409, and a matching retry returns the recorded value. <code>GET /leaderboards/{id}/top?n</code> returns an ordered list, <code>GET /leaderboards/{id}/players/{playerId}</code> returns <code>{value, rank}</code>, and <code>GET /leaderboards/{id}/around/{playerId}?k</code> returns the neighbours above and below. Writes require an authorized principal and a validated delta.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> ScoreService
+    ScoreService --> EventLog
+    ScoreService --> SortedStore
+    RankService --> SortedStore
+</pre>
+<ol>
+  <li>A score write is deduplicated by eventId, appended to a log, and applied to the sorted structure.</li>
+  <li>Top-N and around-me queries read the sorted structure directly.</li>
+  <li>An order-statistics index answers an arbitrary player's exact rank.</li>
+</ol>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
+<p>A sorted set backed by a skip list or balanced tree gives O(log N) updates and O(log N + n) top-N and supports rank queries, but a single instance caps throughput and one hot leaderboard is the scaling unit. Exact rank for an arbitrary player is the costly part: an order-statistics tree answers it in O(log N), while periodic snapshot ranking is cheaper but stale. Sharding by score range parallelizes writes but turns global rank into a cross-shard sum.</p>
+<h3>Scale estimate: update cost and memory</h3>
+<p>At 100,000 updates/second, a skip-list update over ten million players is about 23 comparisons, so CPU is cheap and single-writer contention is the real limit; partition by leaderboard and replicate hot ones. A top-100 read touches 100 entries, so 50,000 reads/second is about five million element reads/second served from memory. Ten million players at roughly 64 bytes each is about 640 MB per leaderboard, small enough to keep resident.</p>
+<h3>Exact rank at scale</h3>
+<p>Keep an in-memory order-statistics structure per leaderboard so rank and around-me are O(log N). To exceed one machine, shard by score bucket: each shard holds a local sorted set and a count, and a player's global rank is the players above them in their own shard plus the summed counts of all higher-scoring shards, read from a small per-shard count index. Break ties by value descending, then earliest updatedAt, then playerId, so ordering is deterministic and reproducible after failover.</p>
+<h3>Durability, idempotency, and reset</h3>
+<p>Append every accepted ScoreEvent to a replicated log keyed by eventId before touching the in-memory structure; on restart, rebuild from the latest snapshot plus the log tail. Deduplicate by eventId so client retries and at-least-once delivery cannot double-count. A period reset rolls to a new period id, snapshots the old period immutably for read-only access, and starts the new one empty. A zone failure fails over to a replica built from the same log, preserving order.</p>
+<h3>Check the design</h3>
+<p>NFR1 maps to an in-memory sorted set, partitioned; NFR2 to a synchronous structure update after the log append; NFR3 to the replicated event log with eventId dedup; NFR4 to authorized, validated deltas. Test it by submitting the same eventId twice across a failover: the score rises once and the duplicate does not change rank. Kill the primary after the log append but before the in-memory update: the replica must show the score after replay.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

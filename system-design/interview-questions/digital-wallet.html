@@ -1,0 +1,47 @@
+---
+title: "Digital wallet: an interview design"
+description: "Double-entry ledger with idempotent, non-negative transfers."
+---
+<h1>Digital wallet</h1>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Hold a balance per user and currency; transfer funds between two wallets; top up from and withdraw to an external funding source; read a balance and a transaction history.</p>
+<h3>Nonfunctional requirements</h3>
+<ol>
+  <li><strong>NFR1:</strong> assume 5,000 peak transfers/second, with acceptance p99 below 300 ms and balance-read p99 below 50 ms.</li>
+  <li><strong>NFR2:</strong> never let a balance go negative or money be created or destroyed; every movement is a balanced double-entry posting.</li>
+  <li><strong>NFR3:</strong> make transfers idempotent by client request id, survive one zone failure for acknowledged transfers, and apply each transfer once.</li>
+  <li><strong>NFR4:</strong> authorize the debit side to the authenticated owner and keep an immutable audit trail for every posting.</li>
+</ol>
+<h3>Out of scope</h3>
+<p>Currency exchange, interest, lending or credit, and settlement-bank design are excluded; store provider tokens, never raw funding-instrument details.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p><code>Account(walletId, currency, balanceMinorUnits)</code> holds funds in integer minor units. <code>LedgerEntry(entryId, txnId, accountId, direction, amount)</code> records one leg of a movement, and <code>Transfer(txnId, requestId, from, to, amount, state)</code> ties the legs together. For each transaction the debits equal the credits, a balance equals the sum of its postings, and a requestId is applied once.</p>
+<h2 id="api">3. API or system interface</h2>
+<p><code>POST /transfers {fromWallet, toWallet, amount, currency, requestId}</code> returns <code>201 {txnId, state}</code>; reusing a requestId returns the recorded result, and a different body under the same requestId returns 409. <code>GET /wallets/{id}/balance</code> and <code>GET /wallets/{id}/transactions?cursor</code> read state. Top-ups and withdrawals model the external leg as a pending posting confirmed by a provider callback. Return 422 for insufficient funds and 403 when the caller does not own the debited wallet.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> WalletService
+    WalletService --> IdempotencyStore
+    WalletService --> Ledger
+    WalletService --> ExternalRail
+</pre>
+<ol>
+  <li>Validate ownership and available funds for the requested movement.</li>
+  <li>In one transaction, write the balanced debit and credit postings, update both balances, and record the requestId.</li>
+  <li>Model an external leg as a pending posting that a provider callback or reconciliation later finalizes or reverses.</li>
+</ol>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
+<p>Double-entry inside a single database transaction makes non-negativity and conservation trivial when both accounts share a partition, but a cross-partition transfer needs a distributed commit. One global ledger serializes cleanly yet caps throughput; sharding by account scales but turns most transfers into a two-phase or saga flow. A materialized balance column speeds reads but must update atomically with the postings, or reads drift from the ledger.</p>
+<h3>Scale estimate: posting volume and idempotency store</h3>
+<p>Each transfer writes two postings, so 5,000 transfers/second peak is 10,000 postings/second, but sizing storage on a lower average of about 500 transfers/second gives 1,000 postings/second. Over a year that is roughly 31.5 billion postings; at 300 bytes each that is about 9.5 TB raw before replicas and indexes, so keep hot balances in the primary and archive cold postings. Idempotency records retained for 24 hours at peak are about 432 million rows, which the request store must accommodate.</p>
+<h3>Cross-shard transfers and non-negativity</h3>
+<p>When both accounts share a partition, post both legs and update both balances in one ACID transaction with a check that the debited balance stays at or above zero. When they live on different partitions, run a two-phase flow: place a hold that debits the source, credit the destination, then release the hold, compensating with a reversing posting on failure. Serialize writes per account with a row lock or a single-writer partition so two concurrent transfers cannot both pass the funds check and overspend. The hold is itself a ledger posting, so the audit trail stays balanced at every step.</p>
+<h3>Idempotency, durability, and audit</h3>
+<p>Persist the requestId and its result atomically with the postings, so a retried transfer returns the original outcome and never posts twice. Replicate ledger writes synchronously across zones before acknowledging, and keep the ledger append-only so a correction is a new reversing entry, not an edit. Finalize external legs by an idempotent provider reference, re-querying an unknown outcome rather than assuming it, and run periodic reconciliation that re-sums postings against stored balances to catch drift.</p>
+<h3>Check the design</h3>
+<p>NFR1 maps to the single-partition fast path; NFR2 to balanced postings with a non-negative check; NFR3 to a requestId stored atomically with postings plus synchronous cross-zone replication; NFR4 to owner-authorized debits and an immutable log. Test it by firing two concurrent transfers that together exceed the balance: exactly one succeeds. Replay an acknowledged transfer after a zone failover: balances are unchanged and the original txnId is returned.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>
