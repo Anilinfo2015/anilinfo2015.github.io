@@ -43,12 +43,12 @@
                 <div class="hero-stats">
                     <div class="stat">
                     <i class="fas fa-newspaper stat-icon"></i>
-                    <span class="stat-number">122</span>
+                    <span class="stat-number">134</span>
                     <span class="stat-label">Articles</span>
                 </div>
                 <div class="stat">
                     <i class="fas fa-layer-group stat-icon"></i>
-                    <span class="stat-number">14</span>
+                    <span class="stat-number">15</span>
                     <span class="stat-label">Categories</span>
                 </div>
                 <div class="stat">
@@ -68,7 +68,7 @@
                         <span class="featured-category">Architecture Patterns/sharding</span>
                         <h2>The Art of Sharding — Part I: The Foundation (Easy)</h2>
                         <p>> "The secret to building large systems is not building large systems. It is building small systems that work together."</p>
-                        <div class="featured-meta"><i class="fas fa-calendar-alt"></i> 2026-07-10 <i class="fas fa-clock"></i> 9 min read</div>
+                        <div class="featured-meta"><i class="fas fa-calendar-alt"></i> 2026-09-23 <i class="fas fa-clock"></i> 9 min read</div>
                         <a class="featured-cta" href="architecture-patterns/sharding/sharding-core-concept-part1-foundation.html"><i class="fas fa-book-open"></i> Read the story</a>
                     </div>
                 </div>
@@ -117,10 +117,18 @@
                     <a href="system-design/interview-template.html" class="recent-card">
                         <div class="recent-meta">
                             <span class="recent-category">System Design</span>
-                            <span class="recent-date">2026-09-23 • 2 min read</span>
+                            <span class="recent-date">2026-09-23 • 4 min read</span>
                         </div>
                         <h4>HLD delivery framework</h4>
                         <p>Requirements, core entities, interfaces, a working high-level design, and focused deep dives.</p>
+                    </a>
+                    <a href="system-design/interview-questions/key-value-store.html" class="recent-card">
+                        <div class="recent-meta">
+                            <span class="recent-category">System Design/interview Questions</span>
+                            <span class="recent-date">2026-09-23 • 4 min read</span>
+                        </div>
+                        <h4>Distributed key-value store</h4>
+                        <p>Tunable-quorum replication with conflict resolution and repair.</p>
                     </a>
                     <a href="system-design/interview-questions/rate-limiter.html" class="recent-card">
                         <div class="recent-meta">
@@ -138,6 +146,14 @@
                         <h4>Design metrics monitoring</h4>
                         <p>Time-series ingestion, bounded queries, and reliable alert evaluation.</p>
                     </a>
+                    <a href="system-design/interview-questions/maps-routing.html" class="recent-card">
+                        <div class="recent-meta">
+                            <span class="recent-category">System Design/interview Questions</span>
+                            <span class="recent-date">2026-09-23 • 5 min read</span>
+                        </div>
+                        <h4>Maps and routing</h4>
+                        <p>Tiled maps and precomputed, traffic-aware shortest paths.</p>
+                    </a>
                     <a href="system-design/interview-questions/tag-management.html" class="recent-card">
                         <div class="recent-meta">
                             <span class="recent-category">System Design/interview Questions</span>
@@ -145,22 +161,6 @@
                         </div>
                         <h4>Tag management</h4>
                         <p>Tenant-scoped tags, reliable assignments, and permission-filtered discovery.</p>
-                    </a>
-                    <a href="system-design/interview-questions/video-streaming.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">System Design/interview Questions</span>
-                            <span class="recent-date">2026-09-23 • 4 min read</span>
-                        </div>
-                        <h4>Video streaming</h4>
-                        <p>Resumable uploads, adaptive playback, and bounded private-video access.</p>
-                    </a>
-                    <a href="system-design/interview-questions/file-storage.html" class="recent-card">
-                        <div class="recent-meta">
-                            <span class="recent-category">System Design/interview Questions</span>
-                            <span class="recent-date">2026-09-23 • 4 min read</span>
-                        </div>
-                        <h4>File storage</h4>
-                        <p>Resumable immutable versions, atomic publication, and revocable sharing.</p>
                     </a>
                 </div>
             </section>
@@ -177,7 +177,7 @@
                             <p>Imagine you're at YouTube's HQ. A user opens the "Trending" tab on their phone. Within milliseconds, they see the top 100 videos trending RIGHT NOW in their region. No lag, no s...</p>
                         </div>
                         <div class="recommended-footer">
-                            <span class="recommended-category">System Design/design Youtube • 5 min read</span>
+                            <span class="recommended-category">System Design/design Youtube • 6 min read</span>
                         </div>
                     </a>
                     <a href="system-design/Design-Web-Crawler/01-foundations.html" class="recommended-card">
@@ -187,7 +187,7 @@
                             <p>A web crawler is a backend system that continuously discovers URLs, fetches content from the public web, extracts useful signals (text, metadata, links), and pushes the processe...</p>
                         </div>
                         <div class="recommended-footer">
-                            <span class="recommended-category">System Design/design Web Crawler • 5 min read</span>
+                            <span class="recommended-category">System Design/design Web Crawler • 6 min read</span>
                         </div>
                     </a>
                     <a href="system-design/Design-Web-Crawler/02-scale-analysis.html" class="recommended-card">
@@ -219,6 +219,7 @@
                 </div>
                 <div class="topics-grid">
                     <a class="topic-chip" href="#category-system-design-Design-Distributed-Cache">System Design/design Distributed Cache</a>
+                    <a class="topic-chip" href="#category-system-design-Design-Message-Queue">System Design/design Message Queue</a>
                     <a class="topic-chip" href="#category-scalability">Scalability</a>
                     <a class="topic-chip" href="#category-architecture-patterns-sharding">Architecture Patterns/sharding</a>
                     <a class="topic-chip" href="#category-system-design">System Design</a>
@@ -417,6 +418,53 @@
                         </li>
                     </ul>
                 </div>
+                <div class="category-card" id="category-system-design-Design-Message-Queue">
+                    <div class="category-header">
+                        <span class="category-icon"><i class="fas fa-sitemap"></i></span>
+                        <div>
+                            <h3>System Design/design Message Queue</h3>
+                            <p>Explore articles and patterns in this area.</p>
+                        </div>
+                    </div>
+                    <ul class="file-list">
+                        <li>
+                            <a href="system-design/Design-Message-Queue/01-foundations.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Designing a Distributed Message Queue: Foundations</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Message-Queue/02-log-storage-engine.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Message Queue Deep Dive: The Log Storage Engine</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Message-Queue/03-partitioning-and-ordering.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Message Queue Deep Dive: Partitioning and Ordering</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Message-Queue/04-replication-and-durability.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Message Queue Deep Dive: Replication and Durability</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Message-Queue/05-delivery-semantics.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Message Queue Deep Dive: Delivery Semantics</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/Design-Message-Queue/06-production-readiness.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Message Queue Deep Dive: Production Readiness</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
                 <div class="category-card" id="category-architecture-patterns-sharding">
                     <div class="category-header">
                         <span class="category-icon"><i class="fas fa-building"></i></span>
@@ -527,6 +575,12 @@
                             </a>
                         </li>
                         <li>
+                            <a href="system-design/interview-questions/digital-wallet.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Digital wallet</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="system-design/interview-questions/distributed-cache.html">
                                 <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Distributed cache</span>
@@ -551,9 +605,33 @@
                             </a>
                         </li>
                         <li>
+                            <a href="system-design/interview-questions/id-generator.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Unique ID generator</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="system-design/interview-questions/job-scheduler.html">
                                 <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Design a job scheduler</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/interview-questions/key-value-store.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Distributed key-value store</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/interview-questions/leaderboard.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Leaderboard</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/interview-questions/maps-routing.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Maps and routing</span>
                             </a>
                         </li>
                         <li>
@@ -578,6 +656,12 @@
                             <a href="system-design/interview-questions/notification-service.html">
                                 <span class="file-icon"><i class="fas fa-file-alt"></i></span>
                                 <span class="file-title">Design a notification service</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-design/interview-questions/object-storage.html">
+                                <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                                <span class="file-title">Object storage</span>
                             </a>
                         </li>
                         <li>
@@ -789,7 +873,7 @@
                         <li>
                             <a href="system-design/Design-URL-Shortener/01-introduction-requirements.html">
                                 <span class="file-icon"><i class="fas fa-file-alt"></i></span>
-                                <span class="file-title">01 Introduction Requirements</span>
+                                <span class="file-title">URL Shortener: Requirements</span>
                             </a>
                         </li>
                         <li>

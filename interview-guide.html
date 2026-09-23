@@ -22,7 +22,7 @@ description: "HLD and LLD worked answers organized by one shared delivery framew
 
 <h2>Coverage review</h2>
 <p>The starting library had five HLD case-study subjects spread across 41 files, plus 19 LLD worked articles and 11 LLD technique guides. HLD lacked short, comparable answers for messaging, feeds, storage, payments, booking, search, and background processing. LLD covered many familiar questions but mixed interview dialogue, implementations, and production discussion; library lending, rentals, inventory, file systems, scheduling, and order matching were missing.</p>
-<p>This catalog brings those gaps into one structure: 24 HLD articles and 26 LLD articles. The longer HLD series expand individual stages, and the LLD technique guides coach delivery of the same sequence. Their existing detail remains available without imposing a different template on the worked answers.</p>
+<p>This catalog brings those gaps into one structure: 30 HLD articles and 26 LLD articles. The longer HLD series expand individual stages, and the LLD technique guides coach delivery of the same sequence. Their existing detail remains available without imposing a different template on the worked answers.</p>
 <p>These are common practice question families, not a frequency ranking or a claim to cover every employer’s question bank. Product names describe familiar prompts, not those companies’ actual implementations. Workload and latency figures are explicit interview assumptions.</p>
 
 <h2>HLD: links, content, and communication</h2>
@@ -46,10 +46,12 @@ description: "HLD and LLD worked answers organized by one shared delivery framew
 <tbody>
 <tr><td><a href="system-design/interview-questions/ticket-booking.html">Ticket booking / Ticketmaster</a></td><td>Seat holds and payment races</td></tr>
 <tr><td><a href="system-design/interview-questions/payment-system.html">Payment system</a></td><td>Idempotency and reconciliation</td></tr>
+<tr><td><a href="system-design/interview-questions/digital-wallet.html">Digital wallet</a></td><td>Double-entry ledger and idempotent transfers</td></tr>
 <tr><td><a href="system-design/interview-questions/ecommerce.html">E-commerce checkout</a></td><td>Inventory reservations and order state</td></tr>
 <tr><td><a href="system-design/interview-questions/ride-hailing.html">Ride hailing / Uber</a></td><td>Nearby candidates and exclusive assignment</td></tr>
 <tr><td><a href="system-design/interview-questions/food-delivery.html">Food delivery</a></td><td>Order coordination and courier dispatch</td></tr>
 <tr><td><a href="system-design/interview-questions/proximity-search.html">Nearby places / Yelp</a></td><td>Geospatial indexing and exact filtering</td></tr>
+<tr><td><a href="system-design/interview-questions/maps-routing.html">Maps and routing / Google Maps</a></td><td>Tiled graphs and precomputed routes</td></tr>
 </tbody>
 </table>
 
@@ -61,10 +63,14 @@ description: "HLD and LLD worked answers organized by one shared delivery framew
 <tr><td><a href="system-design/interview-questions/rate-limiter.html">Distributed rate limiter</a></td><td>Atomic budgets and outage policy</td></tr>
 <tr><td><a href="system-design/interview-questions/message-queue.html">Message queue</a></td><td>Durable acknowledgements and replay</td></tr>
 <tr><td><a href="system-design/interview-questions/job-scheduler.html">Job scheduler</a></td><td>Leases and duplicate execution</td></tr>
+<tr><td><a href="system-design/interview-questions/id-generator.html">Unique ID generator</a></td><td>Sortable IDs without coordination</td></tr>
+<tr><td><a href="system-design/interview-questions/key-value-store.html">Distributed key-value store</a></td><td>Tunable quorums and replica repair</td></tr>
+<tr><td><a href="system-design/interview-questions/object-storage.html">Object storage / S3</a></td><td>Durable blobs and multipart uploads</td></tr>
 <tr><td><a href="system-design/interview-questions/web-crawler.html">Web crawler</a></td><td>Frontier scheduling and politeness</td></tr>
 <tr><td><a href="system-design/interview-questions/search-engine.html">Search engine</a></td><td>Index construction and query scatter</td></tr>
 <tr><td><a href="system-design/interview-questions/search-autocomplete.html">Search autocomplete</a></td><td>Prefix ranking and refresh cost</td></tr>
 <tr><td><a href="system-design/interview-questions/top-k.html">Top-K / trending content</a></td><td>Windowed counts and approximation</td></tr>
+<tr><td><a href="system-design/interview-questions/leaderboard.html">Leaderboard</a></td><td>Ranked scores and exact rank</td></tr>
 <tr><td><a href="system-design/interview-questions/ad-click-aggregation.html">Ad click aggregation</a></td><td>Deduplication and late events</td></tr>
 <tr><td><a href="system-design/interview-questions/metrics-monitoring.html">Metrics and monitoring</a></td><td>Series cardinality and retention</td></tr>
 </tbody>
@@ -109,7 +115,7 @@ description: "HLD and LLD worked answers organized by one shared delivery framew
 </ul>
 
 <h2>Longer studies and interview technique</h2>
-<p>The short HLD answers supplement the existing series on <a href="system-design/Design-URL-Shortener/01-introduction-requirements.html">URL shortening</a>, <a href="system-design/Design-Distributed-Cache/01-introduction-and-requirements.html">distributed caching</a>, <a href="system-design/Design-Web-Crawler/01-foundations.html">web crawling</a>, <a href="system-design/design-youtube/01-foundations.html">YouTube</a>, and <a href="system-design/Design-Tag-Management-Service/01-requirements-and-domain.html">tag management</a>. Chapter navigation identifies the delivery stage and links to a separate scoped walkthrough; the longer studies can make different workload assumptions.</p>
+<p>The short HLD answers supplement the existing series on <a href="system-design/Design-URL-Shortener/01-introduction-requirements.html">URL shortening</a>, <a href="system-design/Design-Distributed-Cache/01-introduction-and-requirements.html">distributed caching</a>, <a href="system-design/Design-Web-Crawler/01-foundations.html">web crawling</a>, <a href="system-design/design-youtube/01-foundations.html">YouTube</a>, <a href="system-design/Design-Tag-Management-Service/01-requirements-and-domain.html">tag management</a>, and a <a href="system-design/Design-Message-Queue/01-foundations.html">distributed message queue</a>. Chapter navigation identifies the delivery stage and links to a separate scoped walkthrough; the longer studies can make different workload assumptions.</p>
 <p>The <a href="low-level-design/00-the-45-minute-lld-framework.html">LLD interview playbook</a> explains how to deliver the five stages. Its focused guides cover requirements, modeling, interfaces, working flows, and deep dives rather than introduce an alternative article structure.</p>
 <h2>Reference framework</h2>
 <p>Both templates use <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">Hello Interview’s system-design delivery framework</a> as their structural reference. The LLD mapping is this repository’s adaptation; the explanations and scoped solutions are original. No public source establishes a complete list of frequently asked questions.</p>

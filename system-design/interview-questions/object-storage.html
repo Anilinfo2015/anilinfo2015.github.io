@@ -1,0 +1,50 @@
+---
+title: "Object storage: an interview design"
+description: "Durable immutable blobs with multipart uploads and signed reads."
+---
+<h1>Object storage</h1>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#data-flow">Data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Create a bucket; store an object, including large ones through multipart upload; read a whole object or a byte range; delete an object; list objects under a key prefix.</p>
+<h3>Nonfunctional requirements</h3>
+<ol>
+  <li><strong>NFR1:</strong> assume 50,000 peak object operations/second and objects up to 5 TB, with first-byte p99 below 100 ms for warm objects.</li>
+  <li><strong>NFR2:</strong> target extreme durability: lose no acknowledged object through multiple disk failures and one zone failure.</li>
+  <li><strong>NFR3:</strong> give read-after-write consistency for a new key and strong consistency for reads after a successful overwrite.</li>
+  <li><strong>NFR4:</strong> enforce bucket ownership and object access rules; serve anonymous reads only through signed, expiring URLs; keep buckets private by default.</li>
+</ol>
+<h3>Out of scope</h3>
+<p>In-place random writes, POSIX filesystem semantics, and content indexing or search are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p><code>Bucket(name, ownerId, policy)</code> contains <code>ObjectVersion(key, versionId, size, etag, manifest, state)</code>. A manifest lists <code>Chunk(chunkId, shardLocations)</code> entries, and <code>MultipartUpload(uploadId, parts[])</code> tracks an in-progress write. An object is immutable once committed; an overwrite creates a new version, and the manifest points only at durable chunks before the key becomes visible.</p>
+<h2 id="api">3. API or system interface</h2>
+<p><code>PUT /b/{bucket}/{key}</code> stores a small object. Large objects use <code>POST /b/{bucket}/{key}?uploads</code> to get an uploadId, <code>PUT ...?partNumber&amp;uploadId</code> per part, and <code>POST ...?uploadId</code> to complete with the ordered part list and etags. <code>GET /b/{bucket}/{key}</code> supports a Range header; <code>DELETE</code> versions the removal; <code>GET /b/{bucket}?prefix&amp;continuation</code> lists keys. Errors include 404, 403, 412 on an etag precondition, and 400 for a malformed part list. Signed URLs grant time-boxed, method-scoped anonymous access.</p>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>An upload splits into parts; each part is erasure-coded into shards placed across zones; completing the upload commits the manifest, which makes the key visible. A read resolves the manifest, fetches the shards, verifies checksums, and reconstructs the bytes, rebuilding any missing shard from the surviving ones.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> APIGateway
+    APIGateway --> MetadataService
+    APIGateway --> DataNodes
+    MetadataService --> MetadataStore
+    DataNodes --> Disks
+</pre>
+<ol>
+  <li>Upload writes parts to data nodes as erasure-coded shards spread across zones.</li>
+  <li>Completing the upload commits the manifest in metadata only after enough shards are durable.</li>
+  <li>A read loads the manifest, fetches shards, and reconstructs the object, repairing on the fly.</li>
+</ol>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
+<p>Three-way replication is simple and fast to repair but triples storage; erasure coding such as 10+4 reaches similar durability at about 1.4 times overhead, at the cost of CPU and cross-node reads during repair. A flat key space with prefix listing avoids directory-rename storms but turns listing into a metadata-index problem. Small objects amortize poorly against fixed per-object metadata, so pack them or accept the overhead.</p>
+<h3>Scale estimate: ingress and node count</h3>
+<p>At 50,000 operations/second, if a fifth are 5 MB puts, raw ingress is about 10,000 times 5 MB, roughly 50 GB/second, or 70 GB/second after 1.4 times coding, spread across data nodes. One exabyte of logical data at 1.4 times coding is 1.4 EB raw; at 20 TB per node that is about 70,000 data nodes. Multipart parts of 5 MB to 5 GB keep each request independently restartable and parallelize the write across many nodes.</p>
+<h3>Durability and integrity</h3>
+<p>Erasure-code each part into k+m shards placed across zones so any m losses are recoverable, and store a checksum per shard verified on every read, triggering reconstruction on a mismatch to catch bit rot. A background scrubber re-reads shards and rebuilds under-protected stripes before further loss. Commit the manifest only after enough shards are durable; an interrupted multipart upload leaves orphaned parts that a sweeper reclaims after a TTL. Deletes are versioned, and lifecycle rules expire old versions on a schedule.</p>
+<h3>Consistency and access control</h3>
+<p>Keep object metadata in a strongly consistent, partitioned store keyed by bucket and key, so a completed put is immediately visible for read-after-write. The manifest swap is atomic per key, so an overwrite reader sees either the old or the new version, never a torn mix; listing reads a consistent index, and any index lag only delays appearance in a listing, not a direct get. Authorize every request against the bucket policy, issue short-lived signed URLs bound to method, key, and expiry, and never expose data nodes directly or make buckets public by default.</p>
+<h3>Check the design</h3>
+<p>NFR1 maps to parallel multipart and shard fan-out; NFR2 to cross-zone erasure coding with scrubbing; NFR3 to an atomic manifest commit in a consistent metadata store; NFR4 to bucket policy and signed URLs. Test it by failing m shards of a stripe during a get: reconstruction must still return correct bytes and repair the stripe. Interrupt a multipart completion: the key must be either fully visible or absent, never partial.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

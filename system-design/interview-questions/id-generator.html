@@ -1,0 +1,46 @@
+---
+title: "Unique ID generator: an interview design"
+description: "Fleet-wide unique, roughly time-ordered 64-bit identifiers."
+---
+<h1>Unique ID generator</h1>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Return a new identifier that is unique across the whole fleet; keep identifiers roughly time-ordered so they sort by creation; let many independent services allocate concurrently through a local library call.</p>
+<h3>Nonfunctional requirements</h3>
+<ol>
+  <li><strong>NFR1:</strong> assume 1,000,000 IDs/second across the fleet, with p99 below 1 ms when serving from a local batch and below 10 ms when refilling from the coordinator.</li>
+  <li><strong>NFR2:</strong> never return one identifier twice, including across process restarts, backward clock steps, or one availability-zone failure.</li>
+  <li><strong>NFR3:</strong> keep identifiers k-sortable in 64 bits: two IDs generated more than one second apart must order by time.</li>
+  <li><strong>NFR4:</strong> target 99.99% allocation availability; a node must keep issuing from its reserved allotment during a coordinator outage.</li>
+</ol>
+<h3>Out of scope</h3>
+<p>Cryptographic unpredictability, using identifiers as bearer capabilities, and total ordering across datacenters are excluded. IDs reveal approximate creation time by design.</p>
+<h2 id="core-entities">2. Core entities</h2>
+<p><code>NodeLease(nodeId, leaseEpoch, expiresAt)</code> assigns a worker number to one process. <code>IdLayout(timestampMs, nodeId, sequence)</code> fixes the bit budget, for example 41 timestamp bits, 10 node bits, and 12 sequence bits. <code>Allotment(service, blockStart, blockEnd)</code> holds a durably reserved counter block for the ticket-server alternative. A <code>(nodeId, leaseEpoch)</code> pair must never be reused while its earlier IDs might still be forming.</p>
+<h2 id="api">3. API or system interface</h2>
+<p>Callers use a local <code>next() -&gt; id</code> that never blocks on the network in the common path. The library backs it with <code>POST /nodes/lease {serviceId}</code> returning <code>{nodeId, leaseEpoch, expiresAt}</code>, renewed by heartbeat, or <code>POST /allotments {serviceId, size}</code> returning a counter block. Leasing requires service authentication. Return 409 when no node number is free, and 423 when the wall clock has moved backward beyond tolerance so the caller waits rather than risking a duplicate.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<pre class="mermaid">
+flowchart LR
+    Service --> IdLibrary
+    IdLibrary --> Coordinator
+    Coordinator --> MetadataStore
+</pre>
+<ol>
+  <li>On startup the library leases a node number (or a counter block) from the coordinator.</li>
+  <li><code>next()</code> composes <code>timestamp || nodeId || sequence</code> locally, incrementing the sequence within a millisecond.</li>
+  <li>On lease expiry, sequence exhaustion, or a clock regression, the library re-leases or waits before emitting again.</li>
+</ol>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
+<p>A timestamp-plus-node-plus-sequence layout needs no coordination per identifier and stays sortable, but it assumes bounded clock skew and a finite node-number space. A central auto-increment ticket server is simple and gapless, yet every allocation crosses the network and the server caps throughput; handing out blocks amortizes that at the cost of gaps and weaker ordering. Random 128-bit UUIDs remove coordination entirely but are unsortable and hurt index locality.</p>
+<h3>Scale estimate: node fan-out and coordinator load</h3>
+<p>At 1,000,000 IDs/second with a 12-bit sequence, each node can mint 4,096 IDs/millisecond, about 4.1 million/second, so a handful of nodes covers peak; the 10-bit node field allows 1,024 of them. The block alternative with 100,000-value allotments needs only ten coordinator calls/second at this rate, each cached locally for sub-microsecond allocation. Lease and allotment metadata is kilobytes, so the coordinator is a coordination service, not a data-plane bottleneck.</p>
+<h3>Clocks, restarts, and uniqueness</h3>
+<p>Discipline node clocks with NTP and persist a per-node high-water timestamp on each lease renewal; on restart, resume above it so a reboot never rewinds. If the wall clock regresses within tolerance, refuse to emit and wait for it to catch up rather than reissue a lower timestamp. When a millisecond's sequence is exhausted, spin to the next millisecond instead of overflowing into the node bits. Size the lease TTL to exceed the longest possible in-flight emission window so a node that cannot renew stops issuing before its number could be reassigned.</p>
+<h3>Availability without a coordinator</h3>
+<p>Reserve node numbers or counter blocks with a TTL longer than the coordinator's expected outage, so allocation continues locally during a partition. Keep leases in a small, strongly consistent replicated store so two nodes never hold the same number, and fence renewals by lease epoch so a delayed renewal from a paused process is rejected. On total coordinator loss, nodes serve until their TTL expires and then fail closed, refusing new IDs rather than risking duplicates.</p>
+<h3>Check the design</h3>
+<p>NFR1 maps to local sequence and cached blocks; NFR2 maps to fenced leases plus the persisted high-water timestamp; NFR3 maps to the timestamp-high bit layout; NFR4 maps to TTL-reserved allotments. Test it by pausing a node past a long garbage-collection stall, stepping its clock backward 500 ms, and rebooting it: it must not emit any identifier less than or equal to one already issued, and its node number must stay unassigned until its lease expires.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>
