@@ -1,0 +1,39 @@
+---
+title: "Design a message queue"
+description: "Partitioned durable logs with visibility leases and explicit redelivery."
+---
+<h1>Design a message queue</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> publish messages; consume and acknowledge messages within a consumer group; inspect or redrive messages that exceed a retry limit. Each group independently consumes retained messages.</p>
+<p><strong>Non-functional assumptions:</strong> N1: publish p99 below 20 ms within one region. N2: support 200,000 messages/s peak with 1 KB payloads. N3: lose zero acknowledged messages after one broker failure and offer at-least-once delivery within a 24-hour retention window.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude global ordering, cross-region consensus, and atomic transactions with arbitrary consumer databases. Preserve append order within a partition, not completion order across concurrently processed messages.</p>
+<h2>3. Core entities</h2>
+<p>Topic has tenant and topic ID. Message uses (topic, partition, offset). ProducerSession uses producer ID and epoch, tracking sequence numbers per partition. Delivery uses (group, partition, offset), with visibility deadline and receipt epoch. The invariant is that committed offsets never refer to messages absent from the replicated log; only the current receipt may acknowledge an active delivery.</p>
+<h2>4. API</h2>
+<p><code>POST /topics/{id}/messages</code> accepts payload, routing key, producer session, and sequence; returns partition and offset. Same-session, same-sequence retries return the original offset; changed data or expired sessions return 409. <code>POST /groups/{id}/poll</code> takes maximum batch size and wait time, returning messages and receipt tokens. <code>POST /acks</code> accepts those tokens; stale receipts return 409. Tenant ACLs separately authorize publishing, consuming, and redrive. Oversized payloads return 413, quotas 429, quorum loss 503. Dead-letter listing uses cursors; redrive accepts an idempotency key and returns a new message reference.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Producer --> Broker
+    Broker --> DurableLog
+    Consumer --> Broker
+    Broker --> GroupState
+    Broker --> DeadLetterQueue
+</pre>
+<ol>
+<li>Append a published message and return its durable offset.</li>
+<li>Lease eligible messages to polling consumers; acknowledgments mark group delivery complete.</li>
+<li>Return expired leases to eligibility, or move exhausted messages to a dead-letter queue for inspection and controlled redrive.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>A database-backed queue simplifies leases but updates hot rows repeatedly. An append-only log amortizes disk writes but needs separate acknowledgment state. Per-message acknowledgments permit parallel workers at greater metadata cost than a sequential consumer offset.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume 50,000 messages/s average and fourfold peak. Payload alone is 50 MB/s average, or 4.32 TB per day; three replicas require 12.96 TB for 24 hours before metadata. Peak replication payload is 600 MB/s across all copies. These assumptions require multiple broker disks and partition leaders, not an in-memory queue disguised as durable storage.</p>
+<h2>8. Deep dive 1: Partition throughput</h2>
+<p>N1/N2 hash routing keys to fixed partitions and distribute leaders across brokers. Batch small appends by bytes or a short flush timer, bounded to preserve the latency budget. Sequential segment writes avoid random payload I/O. Track queue depth and apply tenant byte-rate limits before disks saturate. Hot keys stay on one partition and therefore have a throughput ceiling. On broker failure, clients refresh leader metadata and retry producer sequences. Partition expansion changes key placement, so ordered producers need an explicit drain-and-cutover boundary rather than an invisible rehash.</p>
+<h2>9. Deep dive 2: Durable redelivery</h2>
+<p>N3 acknowledges publishes after quorum replication and fences leaders by term. Persist producer deduplication state with log entries; reject an expired producer epoch instead of guessing. Group-state shards use (group, partition), recording an acknowledgment bitmap above the contiguous completed offset. Lease expiry schedules redelivery with bounded exponential backoff. A crash after processing but before acknowledgment repeats delivery: consumers must deduplicate business effects. Move exhausted deliveries through a durable outbox so a crash cannot lose the dead-letter copy. Alert before retention expiry; offline groups beyond 24 hours receive an explicit expired-offset error.</p>
+<h2>10. Check the design</h2>
+<p>N1/N2 map to dive 1; N3 maps to dive 2. Kill a broker after quorum append but before replying: a valid producer retry must resolve to the original offset. Kill a consumer before acknowledgment and observe redelivery, not silent disappearance.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

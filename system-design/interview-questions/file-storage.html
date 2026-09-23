@@ -1,0 +1,43 @@
+---
+title: "File storage: an interview design"
+description: "Resumable immutable versions, atomic publication, and revocable sharing."
+---
+<h1>File storage</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> upload a new file or version; download a selected version; share a file with selected users.</p>
+<ol>
+  <li><strong>NFR1:</strong> assume 10,000 peak metadata requests/second, with p95 below 200 ms, and resumable uploads up to 10 GB.</li>
+  <li><strong>NFR2:</strong> preserve acknowledged finalized versions through one zone failure.</li>
+  <li><strong>NFR3:</strong> publish only complete, verified versions; concurrent updates to the same base version must not silently overwrite each other.</li>
+  <li><strong>NFR4:</strong> authorize all metadata/content access and revoke new byte downloads within 60 seconds of a sharing change.</li>
+</ol>
+<h2>2. Out of scope</h2>
+<p>Desktop synchronization, collaborative editing, cross-user deduplication, and malware detection are excluded. Downloaded copies cannot be revoked. Sharing covers all retained versions.</p>
+<h2>3. Core entities</h2>
+<p><code>File(fileId, ownerId, currentVersion, aclVersion)</code> references immutable <code>Version(fileId, versionId, objectKey, checksum, bytes)</code>. <code>Upload(uploadId, ownerId, expectedVersion, state)</code> tracks parts. <code>Grant(fileId, userId, role)</code> stores reader/editor access. The current-version pointer references only a durably stored, checksum-verified object.</p>
+<h2>4. API</h2>
+<p><code>POST /uploads {fileId?, expectedVersion, bytes, checksum}</code> returns uploadId and constrained part URLs. Idempotency-Key retries reuse the session; changed input returns 409. Owner-authorized <code>GET /uploads/{id}?cursor</code> returns state and paginated completed parts/checksums for resumption. <code>POST /uploads/{id}/complete {parts}</code> returns the published version, including on retries; missing parts/checksum mismatch returns 422, stale expectedVersion 409. Uploads require file owner/editor permission. <code>GET /files/{id}/versions/{version}/download</code> checks reader access and returns a short-lived capability. <code>PUT /files/{id}/grants/{userId} {role}</code> and DELETE are file-owner-only, idempotent operations returning 204. Inaccessible resources return 404; quota exhaustion returns 429.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> MetadataAPI
+    MetadataAPI --> Database
+    Client --> ObjectStore
+    MetadataAPI --> ObjectStore
+</pre>
+<ol>
+  <li>Authorize an upload and reserve its byte quota and immutable object key.</li>
+  <li>Upload parts directly; verify the assembled object, then publish its version transactionally.</li>
+  <li>Owners change grants; authorized readers obtain a capability and download the selected immutable version.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Proxying bytes through application servers simplifies access checks but ties capacity to transfer bandwidth. Direct transfers require narrow capabilities and bounded revocation. Immutable versions simplify retries and rollback but consume storage. Reject stale base versions rather than merging binary files.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume one million uploads/day averaging 10 MB: 10 TB/day, roughly 116 MB/second average ingress. A tenfold peak needs 1.16 GB/second. Thirty-day retention consumes 300 TB raw; three copies need 900 TB before additional version retention. Use multipart object storage, lifecycle policies, and byte quotas; metadata counts cannot size transfer infrastructure.</p>
+<h2>8. Deep dive 1: Resumable, durable byte transfer</h2>
+<p>Use uploadId and part number as retry identities; overwriting a part is safe until finalization freezes its manifest. Clients query completed parts and resend only missing ones. Constrain signed URLs by object key, operation, size, and expiration. Verify the assembled object's length and checksum server-side; a part ETag is not necessarily a whole-file checksum. Finalization waits for the storage service's cross-zone durability acknowledgement. Partition metadata by fileId and keep bytes outside the database. Backups protect metadata independently; sweep abandoned uploads only after their sessions expire. The cost is an additional completion round trip and temporary staging storage.</p>
+<h2>9. Deep dive 2: Atomic publication and bounded sharing</h2>
+<p>In one replicated transaction, recheck edit permission, compare expectedVersion, insert the immutable version, advance the pointer, and record the completion result. Check an existing completion result before treating a retry as a stale update. A failed transaction leaves an unreferenced object for delayed cleanup, never a partial visible file. Download issuance reads current grants; capabilities expire within 60 seconds of that check beginning. The storage gateway validates them on every range request and terminates streams at expiry, so long downloads must renew authorization. Grant-service failures deny renewal. Audit access without exposing content or signed URLs in logs.</p>
+<h2>10. Check the design</h2>
+<p>NFR1–2 → dive 1; NFR3–4 → dive 2. Finalize two uploads against one base: exactly one pointer advance succeeds. Revoke a reader mid-download: expired streams stop, renewal fails, and no unpublished version appears.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

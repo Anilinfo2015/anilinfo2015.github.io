@@ -1,0 +1,43 @@
+---
+title: "Design ad click aggregation"
+description: "Auditable click counts with deduplication, event-time windows, and replay."
+---
+<h1>Design ad click aggregation</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> collect clicks; query campaign counts by minute; issue corrected revisions after late arrivals or replay. Counts support reporting, not settlement.</p>
+<p><strong>Non-functional assumptions:</strong> N1: collection acknowledgment p99 below 100 ms. N2: process 500,000 clicks/s peak. N3: publish provisional counts within 30 seconds and incorporate accepted arrivals up to 24 hours late within five minutes. N4: count each accepted event ID once per revision and lose zero acknowledged raw events after one storage-node failure.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude fraud classification, cross-device attribution, invoicing, and auctions. Deduplication cannot determine whether clicks represent genuine human intent.</p>
+<h2>3. Core entities</h2>
+<p>Click uses (publisher, event ID), with campaign, occurrence time, and signed impression reference. Aggregate uses (advertiser, campaign, minute, revision). Checkpoint uses stream partition and offset. Each accepted click contributes once per revision; replay cannot add it again.</p>
+<h2>4. API</h2>
+<p><code>POST /clicks</code> accepts event ID, impression token, and occurrence time; returns 202 with receipt ID. Validate token signature, expiry, campaign binding, and publisher authorization. Duplicate IDs with identical data return the same receipt; changed content returns 409, invalid tokens 403, timestamps outside the accepted window 422, overload 429. Retry uncertain submissions with the same ID. <code>GET /campaigns/{id}/counts</code> accepts time range, minute step, revision, and cursor; returns buckets and provisional flags. Advertiser credentials must own the campaign. Authorized operators may <code>POST /rebuilds</code> with range and idempotency key, returning a job ID; conflicting active rebuilds return 409.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Publisher --> Collector
+    Collector --> RawStore
+    Aggregator --> RawStore
+    Aggregator --> CountStore
+    Advertiser --> Query
+    Query --> CountStore
+    Operator --> Rebuilder
+    Rebuilder --> RawStore
+    Rebuilder --> CountStore
+</pre>
+<ol>
+<li>Validate and persist uniquely identified click events before acknowledgment.</li>
+<li>Group accepted clicks by campaign and occurrence minute, publishing count revisions.</li>
+<li>Serve campaign-authorized reports; rebuild a requested range into a separate revision and publish it after verification.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Per-click database increments make popular campaigns hot rows. Buffered partial aggregation reduces writes but delays visibility. Raw events cost storage yet enable corrections and audit; aggregates alone cannot explain discrepancies.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume 100,000 clicks/s average, fivefold peak, and 100 bytes per raw event. Raw traffic is 10 MB/s average, or 864 GB/day; three replicas need 2.592 TB/day before indexes. A 24-hour exact deduplication set at 24 bytes per ID needs about 207 GB raw at average load. This requires partitioned state and bounded retention, not a single process-wide hash set.</p>
+<h2>8. Deep dive 1: Throughput and event time</h2>
+<p>N1–N3 use batched replicated-log appends at collectors and asynchronous aggregation. First partition by publisher/event ID for deduplication, then route by campaign plus deterministic salt to spread hot campaigns. Salt workers maintain event-time minute counters; reducers sum their absolute partial counts by checkpoint generation, never repeatedly add retried deltas. Publish provisional views every ten seconds and correct late minutes until the 24-hour watermark closes. Replay failed workers from checkpoints, exposing report age while recovering. Bound query ranges and cache complete revisions so reporting does not compete with ingestion.</p>
+<h2>9. Deep dive 2: Auditable replay</h2>
+<p>N4 quorum-commits raw events and receipts before acknowledgment; quorum loss returns 503. Deduplication checkpoints atomically include input offsets and downstream output state, preventing lost contributions after crashes. Keep IDs beyond the 24-hour lateness and retry windows. Rebuild deduplicated isolated revisions through a captured source-offset vector. Pause aggregate publication at a later offset barrier, catch the rebuild up to that barrier, compare totals, atomically switch manifests and offset checkpoints, then resume newer offsets. Raw ingestion continues during this handoff; interrupted rebuilds resume checkpoints without changing the live manifest. Retain raw data seven days and reject older rebuilds.</p>
+<h2>10. Check the design</h2>
+<p>N1–N3 map to dive 1; N4 maps to dive 2. Crash after deduplication state is written but before downstream publication, then replay and rebuild: both revisions must match an offline unique-ID count, including late clicks, without doubling hot-campaign totals.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

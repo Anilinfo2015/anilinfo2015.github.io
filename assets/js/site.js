@@ -49,6 +49,9 @@ if (mermaidCodeBlocks.length && window.mermaid) {
 
 // Copy code button for pre blocks (skip Mermaid blocks)
 document.querySelectorAll('.markdown-content pre').forEach(pre => {
+  if (pre.classList.contains('mermaid')) {
+    return;
+  }
   const code = pre.querySelector('code');
   if (code && (code.classList.contains('language-mermaid') || code.classList.contains('mermaid'))) {
     return;

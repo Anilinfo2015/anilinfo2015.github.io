@@ -1,0 +1,44 @@
+---
+title: "LLD Walkthrough: Inventory Management"
+description: "Atomic multi-item reservations, shipment, and expiry with durable retry keys."
+---
+<h1>Inventory Management</h1>
+
+<h2>1. Requirements</h2>
+<p>Receive stock, reserve a set of items in one warehouse, ship a reservation, or release it. Concurrent service instances share transactional storage. Quantities are positive whole units, not floating-point measures. Limit reservations to 100 distinct SKUs. Reservations last fifteen minutes and are valid on [createdAt,expiresAt), using database time. Inventory operations do not price or charge orders.</p>
+
+<h2>2. Out of scope</h2>
+<p>Exclude cross-warehouse transfers, backorders, lot tracking, fractional quantities, procurement, and external payments. A reservation ships all its lines together; partial shipment is a separate extension. Expired allocations may remain conservatively reserved until a cleanup transaction releases them.</p>
+
+<h2>3. Model and invariants</h2>
+<p><code>InventoryService</code> owns stock mutations. <code>Balance</code>, keyed by warehouse and SKU, owns onHand and reserved counts. <code>Reservation</code> owns immutable line quantities, expiry, and status <code>HELD</code>, <code>SHIPPED</code>, <code>RELEASED</code>, or <code>EXPIRED</code>. <code>StockMovement</code> records each committed receipt or shipment for audit.</p>
+<pre class="mermaid">
+classDiagram
+    class InventoryService
+    class Balance
+    class Reservation
+    class StockMovement
+    InventoryService --> Balance
+    InventoryService --> Reservation
+    InventoryService --> StockMovement
+    Reservation --> Balance
+</pre>
+<p>Every balance satisfies 0 ≤ reserved ≤ onHand; available equals onHand minus reserved. Reserved equals quantities in reservations still marked HELD, including expired-but-not-cleaned records. Shipping consumes onHand and reserved together; releasing changes reserved only.</p>
+
+<h2>4. Public contract</h2>
+<p><code>receive(warehouseId, sku, quantity, receiptKey) → Movement</code> returns <code>NotFound</code>, <code>InvalidQuantity</code>, <code>Overflow</code>, or <code>KeyConflict</code>. Identical receipt keys return the original movement, never a second increment. <code>reserve(warehouseId, items, key) → Reservation</code> returns <code>NotFound</code>, <code>InvalidItems</code>, <code>InsufficientStock</code>, or <code>KeyConflict</code>. Duplicate SKU lines are rejected rather than ambiguously combined; identical keys return the original reservation.</p>
+<p><code>ship(reservationId) → Reservation</code> is idempotent once shipped and otherwise returns <code>NotFound</code>, <code>Expired</code>, or <code>InvalidState</code>. <code>release(reservationId)</code> returns the existing released/expired record on retries, rejects shipped reservations with <code>InvalidState</code>, and unknown IDs with <code>NotFound</code>. <code>availability(warehouseId, sku) → Counts</code> returns a snapshot or <code>NotFound</code>.</p>
+
+<h2>5. Core flow</h2>
+<p>Reserve validates quantities and locks all requested balance rows in sorted SKU order. Recheck available quantities for every line. If any line is short, roll back without reserving the others. Otherwise increment reserved counts and insert the reservation plus deduplication result in one transaction.</p>
+<p>Ship locks reservation first, then its balance rows in sorted order. Read database time after acquiring locks. At or beyond expiry, decrement reserved quantities, mark EXPIRED, commit, and return the expiry result. Otherwise decrement both counts, append movement records uniquely keyed by reservation and SKU, and mark SHIPPED atomically. Release and expiry cleanup take the same locks and decrement reserved exactly once.</p>
+
+<h2>6. Trade-offs and extensions</h2>
+<p>Separate onHand and reserved counters make availability cheap while preserving physical stock accounting. Conservative cleanup can temporarily understate availability, but cannot oversell. Partial shipment would require per-line shipped and released quantities plus operation keys, rather than reusing the all-or-nothing status.</p>
+
+<h2>7. Concurrency and failure handling</h2>
+<p>Balance locks protect multi-item allocation; reservation locks protect ship-versus-release races. Receipt uniqueness and reservation request keys survive process failure. A lost shipment response is safely retried by reservation ID. Physical dispatch is not performed inside the transaction: if integrated, publish a durable dispatch intent and deduplicate warehouse execution separately.</p>
+
+<h2>8. Test cases</h2>
+<p>With onHand=10, reserving 4 produces available=6; shipping produces onHand=6 and reserved=0. Reserving A=2 and unavailable B=1 changes neither balance. Two reservations for the last unit yield one success. Shipping exactly at expiry releases stock and returns Expired. Duplicate receipts increase stock once. Concurrent ship and release produce one terminal outcome. Reject 101 lines before acquiring balance locks.</p>
+<p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

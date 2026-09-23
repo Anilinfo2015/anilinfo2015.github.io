@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to dynamically generate index.html based on repository contents
-# This script scans the repository for markdown files and generates a beautiful index.html
+# This script scans Markdown and Jekyll HTML articles to generate index.html
 
 set -e
 
@@ -30,6 +30,10 @@ get_md_title() {
     
     # Try to get title from first h1 heading (supports both # and === style)
     title=$(grep -m1 "^# " "$file" 2>/dev/null | sed 's/^# //' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
+    if [ -z "$title" ] && [[ "$file" == *.html ]]; then
+        title=$(sed -n 's/^<h1>\(.*\)<\/h1>$/\1/p' "$file" | head -1)
+    fi
     
     # If no title found, fallback to filename converted to title case
     if [ -z "$title" ]; then
@@ -70,6 +74,15 @@ get_md_excerpt() {
         return
     fi
 
+    if [[ "$file" == *.html ]]; then
+        awk '
+            NR==1 {next}
+            /^---$/ {exit}
+            /^description: "/ {sub(/^description: "/, ""); sub(/"$/, ""); print; exit}
+        ' "$file"
+        return
+    fi
+
     excerpt=$(awk '
         BEGIN {in_fm=0; in_code=0}
         NR==1 && $0 ~ /^---$/ {in_fm=1; next}
@@ -107,7 +120,7 @@ get_read_time() {
             in_fm {next}
             $0 ~ /^```/ {in_code = !in_code; next}
             in_code {next}
-            {count += NF}
+            {gsub(/<[^>]*>/, " "); count += NF}
             END {print count}
         ' "$file")
     fi
@@ -178,12 +191,12 @@ get_file_info() {
     echo "$rel_path|$title|$date|$dir|$excerpt|$read_time"
 }
 
-# Collect all markdown files organized by directory
+# Collect all articles organized by directory
 declare -A categories
 declare -a all_files
 declare -a file_dates
 
-# Find all markdown files
+# Find Markdown files and HTML pages with Jekyll front matter
 while IFS= read -r -d '' file; do
     # Skip hidden files and directories
     [[ "$file" =~ ^\./\. ]] && continue
@@ -192,6 +205,9 @@ while IFS= read -r -d '' file; do
     [[ "$file" =~ ^\./scripts/ ]] && continue
     [[ "$file" =~ ^\./assets/ ]] && continue
     [[ "$file" =~ ^\./node_modules/ ]] && continue
+    if [[ "$file" == *.html ]] && [ "$(head -1 "$file")" != "---" ]; then
+        continue
+    fi
     
     # Get relative path without ./
     rel_path="${file#./}"
@@ -222,7 +238,7 @@ while IFS= read -r -d '' file; do
     else
         categories[$category]="${categories[$category]};;;$rel_path|$title|$date"
     fi
-done < <(find . -name "*.md" -not -path "./.git/*" -not -path "./_*" -print0 | sort -z)
+done < <(find . \( -name "*.md" -o -name "*.html" \) -not -path "./.git/*" -not -path "./_*" -print0 | sort -z)
 
 # Generate HTML content for categories
 generate_category_html() {
@@ -265,7 +281,7 @@ generate_category_html() {
     while IFS='|' read -r path title date; do
         [ -z "$path" ] && continue
         # Convert .md to .html for Jekyll output
-        html_path="${path%.md}.html"
+        html_path="${path%.*}.html"
         echo "                        <li>"
         echo "                            <a href=\"$html_path\">"
         echo "                                <span class=\"file-icon\"><i class=\"fas fa-file-alt\"></i></span>"
@@ -292,7 +308,7 @@ generate_recent_html() {
     
     while IFS='|' read -r path title date dir excerpt read_time; do
         [ -z "$path" ] && continue
-        html_path="${path%.md}.html"
+        html_path="${path%.*}.html"
         local category_title
         if [ "$dir" = "." ]; then
             category_title="Getting Started"
@@ -366,7 +382,7 @@ generate_recommended_html() {
     # Render recommended articles
     while IFS='|' read -r path title date dir excerpt read_time; do
         [ -z "$path" ] && continue
-        local html_path="${path%.md}.html"
+        local html_path="${path%.*}.html"
         local category_title
         if [ "$dir" = "." ]; then
             category_title="Getting Started"
@@ -438,7 +454,7 @@ generate_featured_html() {
     
     IFS='|' read -r path title date dir excerpt read_time <<< "$first_article"
     
-    local html_path="${path%.md}.html"
+    local html_path="${path%.*}.html"
     local category_title
     
     if [ "$dir" = "." ]; then
@@ -478,7 +494,7 @@ generate_featured_html() {
         [ -z "$path" ] && continue
         count=$((count + 1))
         
-        html_path="${path%.md}.html"
+        html_path="${path%.*}.html"
         if [ "$dir" = "." ]; then
             category_title="Getting Started"
         else
@@ -556,6 +572,7 @@ cat > index.html << 'HTMLHEAD'
             <a href="./" class="brand"><i class="fas fa-book-open"></i> System Design Deep Dive</a>
             <nav class="nav-links" id="site-nav">
                 <a href="#latest"><i class="fas fa-clock"></i> Latest</a>
+                <a href="interview-guide.html"><i class="fas fa-list"></i> Interview questions</a>
                 <a href="#recommended"><i class="fas fa-star"></i> Recommended</a>
                 <a href="#topics"><i class="fas fa-tags"></i> Topics</a>
                 <a href="#all-content"><i class="fas fa-th-list"></i> All Articles</a>

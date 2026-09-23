@@ -1,0 +1,40 @@
+---
+title: "Design a search engine"
+description: "A document search service using inverted indexes and recoverable indexing."
+---
+<h1>Design a search engine</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> publish or replace documents; search ranked documents by keywords; delete documents. Assume tenant-wide visibility: any authorized reader in a tenant may search that tenant's documents.</p>
+<p><strong>Non-functional assumptions:</strong> N1: search p95 below 200 ms. N2: support 100 million documents and 5,000 searches/s peak. N3: make accepted updates searchable within 60 seconds and lose zero acknowledged source updates after one storage-node failure.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude web crawling, semantic embeddings, document-level access lists, and advertising. Ranking uses lexical relevance rather than personalized recommendations.</p>
+<h2>3. Core entities</h2>
+<p>Document is keyed by (tenant, document ID), with source version and deleted flag. Posting uses (tenant, term, document ID), storing term frequency and positions. Segment has shard ID, generation, and checksum. The invariant is monotonic document versions: replayed older updates cannot overwrite newer content or a tombstone.</p>
+<h2>4. API</h2>
+<p><code>PUT /documents/{id}</code> accepts text, fields, and expected version; returns 202 with new version or 409 on conflict. A request idempotency key permits safe retries after timeout. <code>DELETE /documents/{id}</code> writes a versioned tombstone with identical retry semantics. <code>GET /search?q=&amp;cursor=</code> returns hits, scores, index generation, and a signed cursor. Tokens restrict tenant and read/write roles; invalid queries return 400, expired cursors 410, overload 429, and unavailable complete results 503. Cursors bind query, tenant, and snapshot and expire after two minutes.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Writer --> API
+    API --> SourceDB
+    Indexer --> SourceDB
+    Indexer --> InvertedIndex
+    Reader --> Search
+    Search --> InvertedIndex
+</pre>
+<ol>
+<li>Commit source mutations with an outbox row; an indexer consumes them and tokenizes text.</li>
+<li>Update term postings or apply a tombstone, then publish a searchable generation.</li>
+<li>Analyze query terms, intersect or union posting lists, score matches, and retrieve the highest-ranked documents.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>A relational full-text index is a useful baseline and keeps operations small. Separate immutable index segments scale reads independently but introduce freshness lag and compaction work. Document partitioning distributes storage evenly; term partitioning reduces some query fanout but creates very hot common-term owners.</p>
+<h2>7. Scale estimate</h2>
+<p>At 5 KB per document, 100 million sources require 500 GB raw. Assume measured index size will be roughly 40% of source: budget 200 GB initially, or 600 GB with three copies, then verify on representative text. Forty document shards mean about 5 GB of index each. At 5,000 searches/s, all-shard fanout creates 200,000 shard searches/s, so shard count trades smaller indexes for coordinator and network cost.</p>
+<h2>8. Deep dive 1: Ranking and fanout</h2>
+<p>N1/N2 use document-ID hashing within tenant shard groups. Each shard intersects sorted postings and uses block-max score bounds to skip candidates that cannot enter its top-k heap. BM25 scoring shares versioned corpus statistics across the group so local scores are comparable. Merge each shard's top k with deterministic document-ID tie-breaking. Cache common query results by snapshot; replicate hot groups rather than blindly adding shards. A failed replica is retried within the request deadline. If any shard remains unavailable, return 503 instead of silently presenting incomplete rankings.</p>
+<h2>9. Deep dive 2: Recoverable publication</h2>
+<p>N3 puts source rows and outbox records in the same quorum-replicated shard transaction. Indexers process each document's versions monotonically, build immutable segments, verify checksums, and atomically publish manifests. Checkpoint offsets only after publication; replay after crashes ignores older versions. Deletes enter a live-document bitmap before later compaction removes postings. Keep tombstones until all older segments and replay checkpoints are retired. Monitor oldest unpublished mutation age and reserve indexing capacity separately from search. Recover corrupt segments from source plus log; source acknowledgment does not imply immediate search visibility.</p>
+<h2>10. Check the design</h2>
+<p>N1/N2 map to dive 1; N3 maps to dive 2. Crash an indexer during manifest publication, then replay a pre-delete update: readers must see a complete generation, and the deleted version must not reappear. Measure catch-up against 60 seconds.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

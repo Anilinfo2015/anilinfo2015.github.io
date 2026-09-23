@@ -1,0 +1,37 @@
+---
+title: "Design a rate limiter"
+description: "Token buckets, tenant isolation, and deliberate behavior during failover."
+---
+<h1>Design a rate limiter</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> evaluate a request against a tenant policy; update that policy; inspect remaining allowance. Assume token-bucket semantics: a burst capacity and a continuous refill rate.</p>
+<p><strong>Non-functional assumptions:</strong> N1: decision latency p99 below 10 ms within one region. N2: sustain 100,000 decisions/s peak across one million active keys. N3: zero token overspend from concurrent requests or acknowledged-state loss during a single-node failure.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude global multi-region quotas, billing, bot detection, and rules combining several independently sharded buckets. A request consumes exactly one bucket.</p>
+<h2>3. Core entities</h2>
+<p>Policy is keyed by (tenant, policy ID), with version, capacity, and refill rate. Bucket uses (tenant, policy ID, subject), storing balance and refill timestamp. Decision uses (bucket, request ID), with a bounded retry lifetime and authenticated gateway issue time. Under a fixed policy, accepted costs never exceed initial capacity plus elapsed refill; balances never become negative.</p>
+<h2>4. API</h2>
+<p><code>POST /decisions</code> accepts policy ID, subject, cost, and request ID; returns allowed, remaining, policy version, and retryAfterMs. Gateway service credentials restrict tenant and subject namespaces. A denied decision is a normal response; malformed costs return 400, unauthorized policies 403, unavailable owners 503. Reuse the request ID within the advertised 60-second retry window. Expired IDs return 409 rather than silently granting a fresh retry. <code>PUT /policies/{id}</code> requires tenant-admin permission and expected version; conflicts return 409. <code>GET /policies/{id}/buckets/{subject}</code> returns an authorized, non-reserving snapshot.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Gateway --> Limiter
+    Admin --> Limiter
+    Limiter --> Database
+</pre>
+<ol>
+<li>Store policy updates transactionally, incrementing their version.</li>
+<li>For each decision, lock the bucket, refill to capacity, subtract cost if sufficient, and save the response with its request ID.</li>
+<li>Read bucket state and calculate its current allowance without consuming tokens.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>A database transaction makes concurrent deductions understandable but adds a write round trip to every request. Per-gateway local buckets remove that hop but multiply the permitted burst unless allowance is explicitly leased. Choose authoritative buckets rather than accepting that overshoot.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume 20,000 decisions/s average and fivefold peak. At 200 bytes per bucket, one million buckets occupy 200 MB raw. A 60-second deduplication window at peak holds six million responses; at 100 bytes each that is another 600 MB before indexes and replication. Memory is manageable; serialized operations and network latency drive partitioning.</p>
+<h2>8. Deep dive 1: Fast partition owners</h2>
+<p>For N1 and N2, hash the full bucket key onto owners and cache the routing map at gateways. Each owner serializes bucket commands in memory. Refill uses <code>min(capacity, balance + rate × elapsed)</code>; fixed-point arithmetic avoids floating-point drift. Batch replication, not deductions, across independent buckets. A single hot bucket remains serialized: load-test its limit and reject excess transport load rather than split its allowance. On owner loss, refresh routing and retry the same request ID; benchmark the extra hop against N1.</p>
+<h2>9. Deep dive 2: Safe failover</h2>
+<p>For N3, replicate deductions, deduplication responses, and policy changes through a quorum log before replying. Fence old owners with leadership terms; minority partitions return 503. Persist refill time; across failover, subtract twice the verified clock-error bound from elapsed time, clamping at zero. Freeze refill if clock uncertainty is unbounded. Policy updates enter each bucket's ordered stream: refill under the old policy first, then clamp balance to the new capacity. Responses expose the applied version. This sacrifices availability and some refill during uncertainty rather than inventing tokens.</p>
+<h2>10. Check the design</h2>
+<p>N1/N2 map to dive 1; N3 maps to dive 2. Kill an owner after quorum commit but before response: a same-ID retry must return the original decision, and concurrent deductions must not overspend. Measure failover latency separately from healthy p99.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

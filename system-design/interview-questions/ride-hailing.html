@@ -1,0 +1,44 @@
+---
+title: "Ride hailing: an interview design"
+description: "Fresh driver discovery with transactional assignment and private trip tracking."
+---
+<h1>Ride hailing</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> request a fixed-fare ride; let a driver accept and complete it; show the rider live trip progress.</p>
+<ol>
+  <li><strong>NFR1:</strong> assume 5,000 peak ride requests and 200,000 location updates/second; target candidate lookup p95 below 300 ms using positions at most ten seconds old.</li>
+  <li><strong>NFR2:</strong> assign at most one active driver per ride and one active ride per driver.</li>
+  <li><strong>NFR3:</strong> target 99.9% monthly booking availability and no loss of acknowledged assignments after one zone failure.</li>
+  <li><strong>NFR4:</strong> reveal precise tracking only to active trip participants; terminate access within five seconds of trip completion or removal.</li>
+</ol>
+<h2>2. Out of scope</h2>
+<p>Pooling, fare calculation, payment settlement, and route optimization are excluded. A pricing component supplies expiring fixed-fare quotes; location samples do not determine charges.</p>
+<h2>3. Core entities</h2>
+<p><code>Quote(quoteId, riderId, amountMinor, currency, expiresAt)</code>, <code>Ride(rideId, riderId, driverId, state, version)</code>, <code>Driver(driverId, activeRideId)</code>, and <code>Position(driverId, sequence, observedAt)</code> are core records. Offers have offerId and expiry. Assignment updates the ride and driver together; geographic candidates never constitute reservations.</p>
+<h2>4. API</h2>
+<p><code>POST /rides {quoteId, pickup, destination}</code> requires rider authentication and Idempotency-Key; return <code>202 {rideId, state}</code>. Identical retries reuse the ride; changed input returns 409, expired or mismatched quotes 422. <code>POST /offers/{id}/accept</code> permits only the offered driver and returns the assigned ride or 409 if expired/taken. <code>POST /rides/{id}/complete {expectedVersion}</code> is assigned-driver-only and idempotent by requestId. <code>PUT /drivers/me/location {sequence, coordinates, observedAt}</code> ignores older sequences. <code>GET /rides/{id}</code> and tracking subscriptions check participation; inaccessible rides return 404. Overload returns 429.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Rider --> RideAPI
+    Driver --> RideAPI
+    RideAPI --> TripDatabase
+    RideAPI --> GeoIndex
+    RideAPI --> Tracking
+</pre>
+<ol>
+  <li>Store the rider's request and quote snapshot; find nearby available drivers.</li>
+  <li>Send expiring offers; accepting commits the ride assignment and driver reservation atomically.</li>
+  <li>Forward authorized location updates; completion releases the driver and closes tracking.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Sequential offers reduce contention but increase delay when drivers ignore them. Small parallel batches improve response time but require atomic winner selection. Geographic indexes are stale by construction; recheck availability in the assignment transaction.</p>
+<h2>7. Scale estimate</h2>
+<p>One million drivers updating every five seconds generate 200,000 updates/second. At 100 bytes/update, raw ingress is 20 MB/second, or 1.728 TB/day if retained. Keeping each driver's latest 200-byte position needs 200 MB raw before indexes and replicas. Use an ephemeral location pipeline, not transactional trip storage, for pings.</p>
+<h2>8. Deep dive 1: Fresh geographic discovery</h2>
+<p>Partition location updates by city and geographic cell, with neighboring-cell queries near boundaries. Apply only increasing device-session sequence numbers and reject implausibly future timestamps; server receipt times bound freshness. Expire positions after ten seconds, and overfetch candidates to compensate for stale availability. A cell handoff can briefly duplicate a driver, so deduplicate by driverId. Busy districts need finer cells and independent ingestion capacity. Push latest positions through bounded queues, dropping superseded samples instead of delaying current ones. Missing fresh drivers produces an honest no-candidate result, not a fabricated location.</p>
+<h2>9. Deep dive 2: Assignment authority and private tracking</h2>
+<p>Keep a city's rides and driver reservations in a quorum-replicated transactional partition. Conditional updates require an unassigned ride, idle driver, and unexpired offer; only one competing acceptance commits. Driver ownership moves between cities only while idle through a fenced transfer. Persist assignment and notification outbox together; replayed notifications cannot reassign a ride. A zone failover elects one fenced writer, while minority partitions reject acceptance. Tracking gateways validate participant identity and use five-second leases checked against active trip state; completion invalidates leases, and expiry covers missed events. The fixed quote snapshot remains immutable and uses integer minor currency units.</p>
+<h2>10. Check the design</h2>
+<p>NFR1 → dive 1; NFR2–4 → dive 2. Race two drivers accepting one ride while losing the leader: exactly one assignment survives, the losing driver remains available, and completion stops tracking within five seconds.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

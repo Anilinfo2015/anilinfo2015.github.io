@@ -1,383 +1,69 @@
 ---
-title: "LLD Walkthrough: Design a Notification Service (the 45-minute way)"
+title: "Design a Notification Component"
 series: "Low-Level Design Interview Playbook"
-readingTime: "~24 minutes"
+readingTime: "~3 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Notification Service", "Strategy Pattern", "Adapter Pattern", "Idempotency", "Retry", "OOD"]
+topics: ["Low-Level Design", "Notification Service", "Idempotency", "Retry"]
 ---
 
-# LLD Walkthrough: Design a Notification Service
+# Design a Notification Component
 
-> Self-contained walkthrough. This is the version you can produce live: clear scope, small objects, async seam, and channel-specific behavior behind interfaces.
+## 1. Requirements
 
-Notification service prompts are deceptively broad. If you are not careful, you will design Gmail, Twilio, APNs, a workflow engine, a template language, and Kafka in one answer. That fails because nothing actually works. The interview wants to see whether you can send one notification correctly, then extend it to email, SMS, and push without rewriting the core.
+Accept a recipient, template version, parameters, and requested channels; dispatch one delivery per permitted channel. One process runs concurrent producers and a bounded worker pool over a durable job repository. Submission costs O(C + message bytes) for C bounded channels; claiming the next indexed due job costs O(log N). Bound active jobs, payload sizes, workers, and attempts.
 
-The core sentence is simple:
+## 2. Out of scope
 
-> A client submits a notification; the service resolves the recipient's allowed channels, renders the message, dispatches per channel, and retries transient failures.
+Exclude campaigns, recipient databases, provider infrastructure, and exactly-once device delivery. Provider acknowledgement means acceptance, not recipient readership. Preferences are snapshotted at submission; later changes do not cancel accepted work.
 
-Everything else is a seam.
+## 3. Model and invariants
 
----
-
-## Minute 0-7: Clarify and fence the scope
-
-Start by turning the product into one flow.
-
-Good questions and reasonable defaults:
-
-- **Primary flow?** → "Send a notification to one or many recipients across email/SMS/push."
-- **Sync or async?** → Accept synchronously, dispatch asynchronously through a queue seam.
-- **Templates?** → Basic template id + variables, rendered before dispatch.
-- **Preferences?** → Per-user opt-in/opt-out and preferred channels are in scope.
-- **Reliability?** → Retry transient provider failures with backoff; dedup by request id.
-- **Providers?** → Model provider calls behind channel interfaces. Do not implement real SMTP/Twilio/APNs.
-
-Say the fence out loud:
-
-> "In scope: accept a notification, resolve channels from user preferences, render a template, enqueue dispatch work, send through email/SMS/push strategies, retry transient failures, and avoid duplicate sends. Out of scope: real provider SDKs, campaign analytics, WYSIWYG templates, billing, and distributed queue internals."
-
-Also say the async decision explicitly:
-
-> "I will make `send` return an id after validation/enqueue. Actual delivery is best-effort and happens in workers. If you want synchronous send, that is a different API on top of the same channel strategies."
-
-That is a senior fence. It avoids pretending a network call to three providers is a clean blocking method.
-
----
-
-## Minute 7-13: Core entities
-
-Name responsibilities before methods. Do not create one subclass per notification type; channel behavior varies, so channel gets the interface.
-
-| Object | Responsibility (one line) |
-|---|---|
-| `NotificationService` | Public entry point; validates requests and creates dispatch jobs. |
-| `Notification` | Request record: recipients, template, variables, priority, idempotency key. |
-| `Recipient` | Addressable user target with contact fields. |
-| `UserPreferences` | Stores allowed channels, opt-outs, and quiet-hour rules. |
-| `Template` | Holds channel-aware message structure and variables. |
-| `Channel` | Sends a rendered message through one medium. |
-| `RetryPolicy` | Decides whether and when to retry a failed dispatch. |
-| `RateLimiter` | Throttles sends per user, channel, or provider. |
-| `DispatchJob` | Unit of async work for one recipient-channel pair. |
-
-Nine objects is the upper bound. It is enough. Avoid adding `EmailNotification`, `SmsNotification`, `PushNotification` as separate domain roots. That usually duplicates state and spreads behavior.
-
-```mermaid
-classDiagram
-    class NotificationService
-    class Notification
-    class UserPreferences
-    class Template
-    class Channel {
-        <<interface>>
-    }
-    class DispatchJob
-    NotificationService --> Notification
-    NotificationService --> UserPreferences
-    NotificationService --> Template
-    NotificationService --> DispatchJob
-    DispatchJob --> Channel
-```
-
-Say this out loud:
-
-> "The notification is channel-agnostic. The channel implementation knows provider details. The service orchestrates; it does not know how SMTP, SMS, or push tokens work."
-
-This is the design in one sentence.
-
----
-
-## Minute 13-20: The spine (API + varying interfaces)
-
-Define the client-facing methods first:
-
-```text
-NotificationId send(NotificationRequest request)
-DeliveryStatus getStatus(NotificationId notificationId)
-void cancel(NotificationId notificationId)          // best effort, before dispatch
-```
-
-A concrete request:
-
-```text
-NotificationRequest {
-  String idempotencyKey
-  List<UserId> recipients
-  TemplateId templateId
-  Map<String, Object> variables
-  Priority priority
-  Optional<List<ChannelType>> requestedChannels
-}
-```
-
-Now the variation seams:
-
-```text
-interface Channel {
-  ChannelType type()
-  DeliveryResult send(RenderedMessage message, Recipient recipient)
-}
-
-class EmailChannel implements Channel
-class SmsChannel implements Channel
-class PushChannel implements Channel
-```
-
-That is the **Strategy pattern**. Each channel handles address validation, provider payload shape, and provider-specific errors. Adding WhatsApp later is a new `Channel` class plus preference support, not a rewrite.
-
-The other seam is retry/rate limiting:
-
-```text
-interface RetryPolicy {
-  Optional<Duration> nextDelay(DispatchAttempt attempt)
-}
-
-interface RateLimiter {
-  boolean allow(UserId userId, ChannelType channelType)
-}
-```
-
-If the interviewer asks about subscribers or audit hooks, name the optional pattern but do not overbuild it:
-
-```text
-interface NotificationObserver {
-  void onAccepted(Notification n)
-  void onDelivered(DispatchJob job)
-  void onFailed(DispatchJob job)
-}
-```
-
-That is the **Observer pattern**, optional for analytics or audit. Keep it out of the happy path unless asked.
-
-Say this out loud:
-
-> "The spine is `send`, then one job per recipient-channel. Channel is Strategy. Retry and rate limiting are seams. A queue decouples accepting a notification from slow provider calls."
-
-Now every follow-up has a place to go.
-
----
-
-## Minute 20-33: Walk the happy path
-
-Use a concrete example.
-
-> "Product code sends `PASSWORD_RESET` to Bob. Bob allows email and push, has opted out of SMS. The service renders the template, creates two dispatch jobs, and workers send each through the proper channel."
-
-Tiny sequence diagram:
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant NS as NotificationService
-    participant P as Preferences
-    participant T as Template
-    participant Q as Queue
-    participant W as Worker
-    C->>NS: send(request)
-    NS->>P: allowedChannels(user)
-    NS->>T: render(template, vars)
-    NS->>Q: enqueue(dispatch jobs)
-    Q-->>W: job
-    W->>W: channel.send(message)
-```
-
-Narrate the accept path:
-
-```text
-send(request):
-  if idempotencyKey already seen:
-    return existing notificationId
-
-  notification = Notification.from(request)
-  for recipient in request.recipients:
-    prefs = preferencesRepository.get(recipient)
-    channels = resolve(request.requestedChannels, prefs)
-    rendered = templateRenderer.render(request.templateId, request.variables)
-
-    for channelType in channels:
-      job = DispatchJob(notification.id, recipient, channelType, rendered)
-      persist(notification, job)     // durably record BEFORE enqueue (outbox)
-      queue.enqueue(job)
-
-  mark notification ACCEPTED
-  return notification.id
-```
-
-The ordering matters and is worth saying out loud: **persist the notification and its dispatch jobs, then enqueue** (the outbox pattern). If you enqueue first and crash before persisting, you can double-send or lose the record. With an outbox, a worker re-reads durable jobs after a crash, and the per-`(notificationId, userId, channelType)` delivery record makes a retried send a no-op. For an in-memory LLD you can keep `persist` behind a repository seam, but you should *name* this as the reliability backbone, not treat it as an afterthought.
-
-Then narrate the worker path:
-
-```text
-process(job):
-  if job already delivered:
-    return
-  if !rateLimiter.allow(job.userId, job.channelType):
-    reschedule(job)
-    return
-
-  channel = channelRegistry.get(job.channelType)
-  result = channel.send(job.message, job.recipient)
-
-  if result.success:
-    mark DELIVERED
-  else if retryPolicy.nextDelay(job.attempt).present:
-    reschedule with delay
-  else:
-    mark FAILED
-```
-
-Say the quiet parts out loud:
-
-- "The queue is a seam. In-memory queue for LLD, Kafka/SQS later. The domain model does not care."
-- "`NotificationStatus` is aggregate status; each `DispatchJob` has its own status. One email failure should not hide one push success."
-- "Idempotency is on request acceptance and on job delivery. That prevents duplicate sends when clients retry or workers crash."
-
-A tiny state diagram is useful here:
+`NotificationService` owns submission and deduplication. `Notification` owns immutable rendered channel payloads and the preference snapshot. Each `Delivery` owns status, attempt count, retry deadline, provider key, and worker lease. Channel adapters translate payloads and classify outcomes.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Accepted
-    Accepted --> Queued
-    Queued --> Sending
-    Sending --> Delivered
-    Sending --> Retrying
-    Retrying --> Sending
-    Sending --> Failed
+    Queued --> Sending: claim
+    Sending --> Accepted: provider accepts
+    Sending --> Waiting: retryable or unknown
+    Waiting --> Sending: retry due
+    Sending --> Failed: permanent rejection
+    Sending --> Uncertain: unresolved outcome at limit
 ```
 
-Keep it small. Do not model every provider-specific bounce state unless asked.
+There is one delivery per `(notificationId, channel)`. Only the current claim token may commit a result. Accepted deliveries are never rescheduled. Retry attempts always retain the original rendered payload and provider idempotency key.
 
----
+## 4. Public contract
 
-## Minute 33-42: Stretch and edges
+`submit(requestId, recipientId, templateVersion, parameters, channels) -> NotificationId|Suppressed` returns `InvalidRecipient`, `InvalidTemplate`, `PayloadTooLarge`, `Busy`, or `Conflict`. Identical request retries return the original ID or suppressed result; changed payload returns `Conflict`.
 
-Common curveballs and bounded answers:
+`status(notificationId) -> channelStatusMap|NotFound` exposes partial success. `Adapter.send(deliveryId, idempotencyKey, payload) -> Accepted(providerId)|PermanentFailure|RetryableFailure|Unknown` distinguishes a rejection from a timeout after possible acceptance.
 
-- **"What if provider is down?"** `Channel.send` returns a typed failure. `RetryPolicy` retries transient failures with exponential backoff and jitter. Permanent failures, like invalid phone number, go straight to failed. Do not retry forever.
-- **"How do you avoid duplicate notifications?"** Store `idempotencyKey -> notificationId` for accepted requests. Store a delivery record per `(notificationId, userId, channelType)` so a retried job can no-op if already delivered.
-- **"Per-user opt-out?"** `UserPreferences` is checked before job creation. If a user opted out of SMS, no SMS job exists. Emergency/transactional overrides can be a policy class, not an `if` spread everywhere.
-- **"Fan-out to a million users?"** `send` creates a campaign/batch id and streams recipient jobs into the queue. The same `DispatchJob` model holds. Add pagination and backpressure; do not put one million users in memory.
-- **"Rate limits?"** `RateLimiter` sits in the worker before `Channel.send`. It can be per provider, per user, or per tenant. If denied, reschedule instead of failing.
-- **"Quiet hours?"** Preferences can return "allowed later" with a next delivery time. The queue supports delayed jobs. Again, no rewrite.
-- **"Templates differ per channel."** `Template` can hold channel-specific bodies: email subject/html, SMS text, push title/body. Rendering is still before dispatch.
-- **"Need observers for analytics."** Add `NotificationObserver` implementations for metrics/audit. That is Observer pattern, and it should not block sending.
+Request deduplication is guaranteed for seven days. IDs contain a validated creation time, and requests older than that window return `ExpiredRequest` rather than becoming new work after record cleanup.
 
-The anti-pattern is provider obsession. You do not need to know Twilio's exact API to design the object model. Hide it behind `SmsChannel` and keep the flow moving.
+## 5. Core flow
 
-Also name the consistency boundary:
+Check for an existing request ID first. Otherwise validate identity, resolve preferences and the pinned template, and render bounded payloads. Atomically insert the request record, notification, and jobs after rechecking deduplication and capacity. With no permitted channels, persist the suppressed result.
 
-> "In a real implementation I would persist the notification and jobs before enqueue, ideally with an outbox pattern. For this LLD, I call that a persistence seam and keep the in-memory queue simple."
+A worker transaction claims a due delivery with a unique fencing token, increments its attempt count, and stores a lease deadline. The worker sends outside the transaction, then conditionally records the outcome using that token. Accepted results are terminal. Permanent failures terminate immediately.
 
-That gives a strong distributed-systems signal without turning the answer into HLD.
+Retryable and unknown outcomes use capped exponential backoff with jitter and at most five attempts. Every claim, including expired-lease recovery, checks the persisted count first: an unresolved fifth attempt becomes `Uncertain`, never a sixth send. Persist UTC retry deadlines; use monotonic timers while running. Exhausted definite failures become `Failed`.
 
----
+## 6. Trade-offs and extensions
 
-## Minute 42-45: Wrap up
+Durable jobs make accepted submissions recoverable, while a bounded queue introduces explicit backpressure. Separate channel jobs isolate email failure from successful SMS. A useful extension is per-provider concurrency limits; it does not require introducing a distributed broker into the object model.
 
-> "The model has `NotificationService` accepting requests, `UserPreferences` resolving allowed channels, `Template` rendering content, a queue creating one `DispatchJob` per recipient-channel, and `Channel` strategies for email/SMS/push. Retry, rate limiting, and observers are explicit seams. The core flow is async so slow providers do not block clients. Next I would add durable outbox persistence and tests for idempotency, opt-out, and retry behavior."
+## 7. Concurrency and failure handling
 
-That summary leaves the interviewer with a working system in their notes.
+Lease recovery can overlap slow sends. Fencing blocks stale state updates, not external duplicates. Durable provider idempotency deduplicates keys; without it, retries may duplicate delivery. Clock adjustments may delay or accelerate retry eligibility; monitor UTC skew. Archive terminal jobs and expire dedup records while retaining unresolved jobs within the active capacity bound.
 
----
+## 8. Test cases
 
-## How real systems solve this
+- Email allowed, SMS disabled: create only the email job.
+- Concurrent identical submissions: one notification and one job per channel.
+- Same request ID with changed parameters: `Conflict`.
+- Email accepted, SMS permanently rejected: report distinct channel outcomes.
+- Provider accepts then times out: retry uses the same key/payload. Crash after attempt five, then lease expiry: `Uncertain`, no sixth send.
+- Active capacity 2, two pending jobs: new submission returns `Busy`; count stays 2, with no partial jobs.
 
-Production notification systems usually split the path into acceptance, durable buffering, and provider delivery. The API validates the request, records an idempotency key, and enqueues one durable job per recipient-channel through a queue such as Kafka or SQS. Workers then fan out through provider adapters for APNs, FCM, Twilio, or Amazon SES, so slow provider calls never block the caller.
-
-The clean LLD interface is an Adapter: each provider converts the common `DispatchJob` into its provider-specific request and maps the response back to a small internal result type. Channel or routing choice is a Strategy: email-first, SMS fallback, push-only, transactional override, and digest delivery should be policies, not conditionals scattered through `NotificationService`.
-
-Reliability is where the interview version is usually too shallow. Retried requests must use an idempotency key; retried jobs should also check a delivery record or content-hash dedup entry within a TTL window. Transient errors get exponential backoff with jitter, permanent errors such as a 400 response or unregistered device are dropped, and jobs that exceed the attempt budget move to a DLQ for inspection.
-
-Real systems also throttle at two levels. A per-user limiter prevents spam and respects quiet hours or preferences; a per-provider limiter protects APNs, FCM, Twilio, and SES quotas. Large fanout is sharded by user or device id, while digest schedulers batch low-priority messages so a product event does not become a notification flood.
-
-## Reference implementation
-
-The core mechanism is provider adaptation plus strategy selection with an idempotency guard. The example below keeps storage in memory, but the same shape maps to a table-backed idempotency store and durable queue worker.
-
-```java
-import java.util.*;
-
-interface ProviderAdapter {
-    DeliveryResult send(DispatchJob job);
-}
-
-record DispatchJob(String idempotencyKey, String userId, Channel channel, String body) {}
-record DeliveryResult(boolean success, boolean transientFailure) {}
-enum Channel { EMAIL, SMS, PUSH }
-
-interface ChannelStrategy {
-    List<Channel> channelsFor(String userId);
-}
-
-final class Dispatcher {
-    private final ChannelStrategy strategy;
-    private final Map<Channel, List<ProviderAdapter>> providers;
-    private final Set<String> delivered = new HashSet<>();
-
-    Dispatcher(ChannelStrategy strategy, Map<Channel, List<ProviderAdapter>> providers) {
-        this.strategy = strategy;
-        this.providers = providers;
-    }
-
-    void dispatch(String requestKey, String userId, String body) {
-        for (Channel channel : strategy.channelsFor(userId)) {
-            String deliveryKey = requestKey + ":" + userId + ":" + channel;
-            if (delivered.contains(deliveryKey)) continue;
-
-            DispatchJob job = new DispatchJob(deliveryKey, userId, channel, body);
-            DeliveryResult result = sendWithFailover(channel, job);
-            if (result.success()) delivered.add(deliveryKey);
-            else if (result.transientFailure()) scheduleRetry(job);
-        }
-    }
-
-    private DeliveryResult sendWithFailover(Channel channel, DispatchJob job) {
-        for (ProviderAdapter adapter : providers.getOrDefault(channel, List.of())) {
-            DeliveryResult result = adapter.send(job);
-            if (result.success() || !result.transientFailure()) return result;
-        }
-        return new DeliveryResult(false, true);
-    }
-
-    private void scheduleRetry(DispatchJob job) {
-        // Persist job with exponential backoff + jitter in the real worker.
-    }
-}
-```
-
-## Complexity and trade-offs
-
-| Operation | Typical cost | Notes |
-|---|---:|---|
-| Accept request | `O(1)` plus persistence | Idempotency lookup is on request key. |
-| Resolve channels | `O(c)` | `c` is allowed channels after preferences and quiet hours. |
-| Dispatch one job | `O(p)` worst case | Provider failover may try up to `p` adapters for that channel. |
-| Fanout to recipients | `O(r * c)` | Usually sharded by user/device id and streamed, not held in memory. |
-| Dedup check | `O(1)` average | Requires TTL cleanup for content-hash entries. |
-
-- Strong dedup reduces duplicate sends, but the idempotency store becomes part of the correctness path.
-- Aggressive retries improve delivery during transient failures, but jitter and DLQs are needed to avoid retry storms.
-- Provider abstraction keeps the core clean, but hides provider-specific capabilities unless the internal result model is chosen carefully.
-- Digest batching protects users from floods, at the cost of delayed delivery for non-urgent notifications.
-
-## Further reading
-
-- [Kafka documentation](https://kafka.apache.org/documentation/) — durable log and consumer-group concepts behind queue-backed fanout.
-- [Stripe: Designing robust and predictable APIs with idempotency](https://stripe.com/blog/idempotency) — practical framing for retry-safe request handling.
-- [Refactoring Guru: Adapter](https://refactoring.guru/design-patterns/adapter) — provider wrapper pattern for APNs, FCM, Twilio, and SES integrations.
-- [Refactoring Guru: Strategy](https://refactoring.guru/design-patterns/strategy) — channel-routing and retry-policy variation without core rewrites.
-- *Designing Data-Intensive Applications* — Martin Kleppmann — reliability and stream-processing background for durable notification pipelines.
-
----
-
-## What separated a pass from a fail here
-
-- You **fenced the scope** before designing a marketing platform.
-- You put email/SMS/push behind the **Strategy pattern**, so channel changes are new classes.
-- You introduced a **queue seam** without spending the round designing Kafka.
-- You handled retries, dedup, opt-out, and fan-out as bounded extensions.
-- You kept provider details out of `NotificationService`, so orchestration and delivery stayed separate.
-
-The pass is not "I know every notification provider." The pass is clean dispatch flow, explicit seams, and bounded reliability answers.
+[Question catalog](../interview-guide.html) · [Article template](interview-template.html)

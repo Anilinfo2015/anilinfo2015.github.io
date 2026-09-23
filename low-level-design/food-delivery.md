@@ -1,396 +1,62 @@
 ---
 title: "LLD Walkthrough: Design a Food Delivery System (DoorDash / Swiggy-style)"
+description: "An order lifecycle with stock reservation, safe assignment, and recoverable payment effects."
 series: "Low-Level Design Interview Playbook"
-readingTime: "~24 minutes"
+readingTime: "~3 minutes"
 difficulty: Advanced
 date: 2026-07-10
-topics: ["Low-Level Design", "Food Delivery", "Order State Machine", "Strategy Pattern", "Idempotency", "OOD"]
+topics: ["Low-Level Design", "Food Delivery", "Order State Machine", "Idempotency"]
 ---
 
-# LLD Walkthrough: Design a Food Delivery System
-> Self-contained walkthrough. This is the LLD version of DoorDash or Swiggy: order objects, state transitions, cart pricing, restaurant acceptance, and agent assignment — not a dispatch-platform HLD.
-Food delivery is another HLD trap. It tempts candidates into maps, Kafka, location streams, surge pricing, fraud detection, restaurant search, and ETA prediction.
-For LLD, stay smaller:
-- Customer builds a cart.
-- Customer places an order.
-- Restaurant accepts and prepares it.
-- A delivery agent is assigned.
-- Order moves through a clear state machine.
-Say this out loud:
-> "I will model the order lifecycle and assignment seam. I will not build a real geo-dispatch optimizer or a microservice architecture."
-That keeps the interview grounded in objects.
+# Food Delivery
 
----
+## 1. Requirements
 
-## Minute 0-7: Clarify and fence the scope
-Ask targeted questions:
-- **Primary flow?** → "Customer orders from one restaurant, pays, restaurant accepts, agent delivers."
-- **Multi-restaurant cart?** → No. One cart belongs to one restaurant.
-- **Payment?** → Model payment status and failure; do not integrate a real gateway.
-- **Agent assignment?** → Provide a pluggable strategy like nearest or round-robin, not route optimization.
-- **Cancellation?** → Include simple cancellation windows based on order state.
-Fence it:
-> "In scope: customer, restaurant, menu item, cart, order, payment, restaurant acceptance, delivery-agent assignment, and order state transitions. Out of scope: search/ranking, coupons, batching, real maps, live tracking, fraud, and distributed systems."
-One more high-signal sentence:
-> "The order state machine is the spine. Most bugs here are illegal transitions, duplicate assignment, or cancellation after food is already prepared."
-Now you have a design target.
+Place, pay for, prepare, and deliver one-restaurant orders. Concurrent instances share transactional storage. Limit carts to 50 distinct items. Prices and fees use integer minor units in one currency; snapshot server prices at placement. Stock represents reservable portions.
 
----
+## 2. Out of scope
 
-## Minute 7-13: Core entities
-Use a tight responsibility table. Composition first.
+Exclude routing, location tracking, coupons, multi-restaurant carts, and customer cancellation after acceptance. Gateway implementation is external; payment retries, refunds, and stock release remain required. Orders do not expire automatically.
 
-| Object | Responsibility (one line) |
-|---|---|
-| `Customer` | Owns delivery address and places orders. |
-| `Restaurant` | Owns menu, availability, and acceptance decision. |
-| `MenuItem` | Represents an orderable item with price and availability. |
-| `Cart` | Holds selected items from one restaurant before checkout. |
-| `Order` | Tracks items, amount, delivery address, and lifecycle state. |
-| `Payment` | Captures payment attempt and status. |
-| `DeliveryAgent` | Represents an assignable courier and current availability. |
-| `OrderService` | Orchestrates checkout, acceptance, assignment, and transitions. |
-| `DeliveryAssignmentStrategy` | Chooses an agent from available candidates. |
-Nine objects. Do not add `GeoHashService`, `KafkaEvent`, `RestaurantShard`, or `EtaModel` in the base model.
-Composition:
-- `Restaurant` has `MenuItem`s.
-- `Cart` has cart lines for one restaurant.
-- `Order` is created from a `Cart`.
-- `Order` has one `Payment`.
-- `Order` may have one `DeliveryAgent`.
-Tiny class diagram:
+## 3. Model and invariants
+
+`OrderService` owns order transitions. `Order` owns immutable lines, total, customer, restaurant, and lifecycle state. `Stock` owns available portions. `Courier` owns its active assignment. Payment state is separate from fulfillment state.
 
 ```mermaid
 classDiagram
-    class OrderService
-    class Customer
-    class Restaurant
-    class Cart
     class Order
-    class DeliveryAgent
-    class DeliveryAssignmentStrategy {
-        <<interface>>
-    }
-    OrderService --> Customer
-    OrderService --> Restaurant
-    OrderService --> Cart
-    OrderService --> Order
-    OrderService --> DeliveryAgent
-    OrderService --> DeliveryAssignmentStrategy
+    class OrderLine
+    class Courier
+    class PaymentAttempt
+    Order *-- OrderLine
+    Order --> Courier
+    Order *-- PaymentAttempt
 ```
 
-Say:
-> "I will not subclass restaurants or agents. The behavior that varies is assignment; that gets an interface. Everything else starts as data plus clear state transitions."
-That is exactly the right amount of pattern usage.
+The path is `PAYMENT_PENDING → PLACED → ACCEPTED → READY → PICKED_UP → DELIVERED`; rejection, payment failure, or permitted cancellation leads to `CANCELLED`. Stock cannot be negative, and one courier serves at most one active order.
 
----
+## 4. Public contract
 
-## Minute 13-20: The spine (API + varying interfaces)
-Define methods the client calls:
+`place(customerId, restaurantId, items, key) -> Order` validates positive quantities and returns `InvalidCart`, `NotFound`, `OutOfStock`, or `KeyConflict`. Identical keys return the original order. `transition(orderId, actorId, action, expectedVersion) -> Order` supports accept, reject, ready, pickup, deliver, and cancel. Errors are `Forbidden`, `InvalidTransition`, `StaleVersion`, or `NotFound`. `assign(orderId, courierId, expectedVersion) -> Order` additionally returns `CourierBusy`. `paymentResult(attemptId, verifiedResult) -> PaymentStatus` rejects unknown or mismatched results and deduplicates terminal events.
 
-```text
-CartId createCart(CustomerId customerId, RestaurantId restaurantId)
-void addItem(CartId cartId, MenuItemId itemId, int quantity)
-OrderId placeOrder(CartId cartId, PaymentMethod paymentMethod)
-void restaurantRespond(OrderId orderId, RestaurantId restaurantId, Decision decision)
-void markReadyForPickup(OrderId orderId, RestaurantId restaurantId)
-void pickupOrder(OrderId orderId, DeliveryAgentId agentId)
-void deliverOrder(OrderId orderId, DeliveryAgentId agentId)
-void cancelOrder(OrderId orderId, CustomerId customerId)
-```
+## 5. Core flow
 
-Variation seam:
+Placement combines duplicate quantities, locks sorted stock rows, verifies restaurant membership and availability, decrements portions, and atomically inserts the priced order, request key, payment attempt, and charge outbox entry. The worker charges outside the transaction using the attempt ID as provider key.
 
-```text
-interface DeliveryAssignmentStrategy {
-  Optional<DeliveryAgent> assign(Order order, List<DeliveryAgent> candidates)
-}
-```
+A verified success changes `PAYMENT_PENDING` to `PLACED`; definitive failure cancels and restores stock once. Cancellation is allowed for the customer before acceptance; restaurant rejection is allowed from `PLACED`. Both release reserved portions once and request refund when payment succeeded. A success arriving after cancellation also schedules refund.
 
-Concrete strategies:
-- `NearestAgentStrategy` → picks the closest available agent.
-- `RoundRobinAgentStrategy` → rotates through available agents.
-- `LeastLoadedAgentStrategy` → picks the agent with fewest active orders.
-This is the **Strategy pattern**.
-Say:
-> "I am intentionally not implementing a real dispatch optimizer. The strategy seam lets product change assignment without changing the order workflow."
-Payment can be a seam too, but do not over-pattern it unless asked:
+Restaurant actors alone accept and mark ready. Assignment requires an unassigned order in `ACCEPTED` or `READY`; otherwise return `InvalidTransition`. Lock order then courier and claim a free courier. Only that courier can pick up a ready order or deliver a picked-up order. Delivery frees the courier atomically. Every accepted transition increments the order version.
 
-```text
-interface PaymentProcessor {
-  AuthResult authorize(CustomerId customerId, Money amount, PaymentMethod method) // place a hold
-  void       capture(AuthId authId)   // take the held money
-  void       void(AuthId authId)      // release the hold; nothing captured
-}
-```
+## 6. Trade-offs and extensions
 
-The state machine is the real spine:
+Reserving stock before payment avoids paid orders without food but ties up portions during uncertainty. A deadline extension needs expiry transitions plus the late-success refund path, not a timer that deletes orders.
 
-```text
-enum OrderStatus {
-  PLACED,
-  ACCEPTED,
-  PREPARING,
-  READY_FOR_PICKUP,
-  PICKED_UP,
-  DELIVERED,
-  CANCELLED
-}
-```
+## 7. Concurrency and failure handling
 
-Keep transitions controlled by methods on `Order`, not random setters.
+All existing-order mutations lock the order first; stock or courier locks follow. Competing assignments serialize on courier rows. Cancellation flags stock as released in the same transaction as restoration. Durable outbox entries survive crashes; workers retry with stable keys and reconcile ambiguous provider timeouts. Refunds remain pending until provider confirmation, never silently marked complete.
 
----
+## 8. Test cases
 
-## Minute 20-33: Walk the happy path
-Happy path: customer checks out, restaurant accepts, agent picks up, agent delivers.
-Small sequence diagram:
+Two orders competing for the final portion yield one placement. Quantity zero fails without a charge request. Total for two 450-minor-unit meals plus a 100 fee is 1000. Customer cancellation after acceptance fails. Duplicate payment success changes state once. Success after cancellation creates one refund intent. Two orders claiming one courier yield one assignment. A 51-item cart is rejected before stock locks.
 
-```mermaid
-sequenceDiagram
-    participant C as Customer
-    participant OS as OrderService
-    participant R as Restaurant
-    participant AS as Assignment
-    participant A as Agent
-    participant O as Order
-    C->>OS: placeOrder(cart,payment)
-    OS->>R: validateMenu(items)
-    OS->>O: create(PLACED)
-    R->>OS: accept(order)
-    OS->>AS: assign(order,agents)
-    AS-->>OS: agent
-    OS->>A: notifyPickup(order)
-```
-
-Narrate:
-- "`Cart` is validated at checkout because menu price or availability may have changed."
-- "An `Order` snapshot stores item names and prices at order time; it does not depend on future menu edits."
-- "Payment is *authorized* (held) at checkout, creating a `PLACED` order; capture happens on acceptance."
-- "Restaurant acceptance moves it to `ACCEPTED` and then `PREPARING`."
-- "Assignment chooses an available agent through `DeliveryAssignmentStrategy`."
-Pseudo-code:
-
-```text
-placeOrder(cartId, paymentMethod):
-  cart = cartRepo.get(cartId)
-  restaurant = restaurantRepo.get(cart.restaurantId)
-  restaurant.validateOpen()
-  restaurant.validateItemsAvailable(cart.items)
-  amount = cart.calculateTotalFromCurrentMenu()
-  auth = paymentProcessor.authorize(cart.customerId, amount, paymentMethod)  // hold, not charge
-  if auth.failed:
-    throw PaymentFailedException
-  order = Order.fromCart(cart, amount, auth.id, PLACED)
-  orderRepo.save(order)
-  return order.id
-```
-
-Say the payment model out loud, because a naive "charge now, refund on rejection" is a real product-quality miss an interviewer will probe: **authorize at checkout (place a hold), capture only after the restaurant accepts.** If the restaurant rejects or times out, you *void the authorization* — no money ever moved, so there's nothing to refund and no customer-visible charge-then-refund churn. This is why `PaymentProcessor` should expose `authorize`, `capture`, and `void`, not a single `charge`.
-
-Restaurant acceptance:
-
-```text
-restaurantRespond(orderId, restaurantId, decision):
-  order = orderRepo.get(orderId)
-  order.ensureRestaurant(restaurantId)
-  if decision == REJECT:
-    paymentProcessor.void(order.authId)   // release the hold; nothing was captured
-    order.cancel("restaurant rejected")
-    return
-  paymentProcessor.capture(order.authId)   // now take the money
-  order.accept()
-  order.startPreparing()
-  assignAgent(order)
-```
-
-Agent assignment:
-
-```text
-assignAgent(order):
-  candidates = agentRepo.availableNear(order.restaurantLocation)
-  agent = assignmentStrategy.assign(order, candidates)
-  if agent is empty:
-    order.markAcceptedWithoutAgent()
-    raise NoAgentAvailableEvent
-    return
-  agent.reserveFor(order.id)
-  order.assignAgent(agent.id)
-```
-
-Say:
-> "No agent available is not the same as order failure. Depending on product, we can keep the order accepted and retry assignment, or cancel before preparation starts."
-Order lifecycle:
-
-```mermaid
-stateDiagram-v2
-    [*] --> PLACED
-    PLACED --> ACCEPTED: restaurantAccepts
-    PLACED --> CANCELLED: restaurantRejects/customerCancels
-    ACCEPTED --> PREPARING: startPreparing
-    PREPARING --> READY_FOR_PICKUP: foodReady
-    READY_FOR_PICKUP --> PICKED_UP: agentPickup
-    PICKED_UP --> DELIVERED: agentDeliver
-    PREPARING --> CANCELLED: allowedCancel
-    DELIVERED --> [*]
-```
-
-This diagram is the design's backbone. Keep all state changes legal and named.
-
----
-
-## Minute 33-42: Stretch and edges
-
-### Restaurant rejects the order
-Bounded transition:
-- `PLACED -> CANCELLED`
-- record rejection reason
-- void the payment authorization (nothing was captured, so no refund is needed)
-- do not assign an agent
-Say:
-> "A restaurant rejection is a normal business transition, not an exception that leaves the order half-created."
-
-### No agents available
-Do not invent a dispatch platform.
-Options:
-- keep order in `ACCEPTED` or `PREPARING` and retry assignment
-- cancel before restaurant starts preparing
-- escalate to manual dispatch
-For the interview:
-> "I will keep assignment pluggable and retry while the order is accepted. If the restaurant has not started preparing and timeout expires, I can cancel and refund."
-
-### Agent double-assignment
-This is the concurrency point if the interviewer pushes.
-One contended resource:
-
-```text
-DeliveryAgent.currentOrderId / availability
-```
-
-Bounded answer:
-- select candidates from available agents
-- reserve one agent with compare-and-set on availability
-- if reservation fails, retry another candidate
-Say:
-> "The strategy suggests an agent; the repository atomically reserves the agent. Strategy is not the correctness boundary."
-That distinction is senior. The algorithm can be wrong and retried; the reservation must be correct.
-
-### Cancellation windows
-State-based policy:
-- before restaurant accepts: allow cancellation
-- while preparing: maybe allow with fee
-- after pickup: disallow normal cancellation
-If this varies by market, hide it behind a `CancellationPolicy` strategy; do not scatter checks through `OrderService`.
-
-### Payment failure
-Payment failure should stop before order creation, or create a clearly failed payment attempt without a live order.
-Bounded rule:
-- no successful payment → no `PLACED` order
-- if payment is authorized then restaurant rejects → void/refund
-- if payment capture is delayed → store payment state explicitly
-
-### Menu changes after checkout
-Cart is not truth forever.
-At `placeOrder`:
-- validate item availability
-- snapshot item name, quantity, unit price
-- reject if price changed and product requires exact price consent
-Say:
-> "The order stores a snapshot. Otherwise tomorrow's menu edit would mutate yesterday's receipt."
-
-### Bounded follow-ups
-Name and defer: batching, live GPS, ETA prediction, coupons, search/ranking, tipping, and support refunds.
-> "Those are add-ons around the same `Order` lifecycle and assignment seam."
-
----
-
-## Minute 42-45: Wrap up
-> "The model has `Customer`, `Restaurant`, `MenuItem`, `Cart`, `Order`, `Payment`, `DeliveryAgent`, `OrderService`, and `DeliveryAssignmentStrategy`. `OrderService` owns checkout and transitions. The state machine prevents illegal moves like delivered-to-cancelled. Assignment is pluggable through Strategy, while actual agent reservation must be atomic. Edge cases like rejection, no agents, payment failure, and cancellation are all state transitions, not special-case chaos."
-That is a strong final snapshot.
-
----
-
-## How real systems solve this
-
-Food delivery is a three-sided marketplace: customer demand, restaurant capacity, and courier supply all have to line up. The LLD version can model a single order, but production systems treat the order state machine as the source of truth: `placed -> confirmed -> preparing -> ready -> picked_up -> delivered`, with cancellation guarded by state.
-
-Assignment is closer to ride-hailing than to a simple round-robin. Systems first find geospatial courier candidates near the restaurant or route, then score them with ETA and availability. DoorDash-style dispatch can batch multiple nearby orders to one courier, which improves efficiency but makes assignment a short-horizon optimization problem instead of a one-order method call.
-
-Checkout has its own correctness boundary. Catalog and menu data are read to build the cart, but the order must snapshot item names, quantities, and prices at placement time. The placement API should accept an idempotency key so a client retry does not create two orders, and payment should authorize before restaurant work begins, then capture at the correct business point.
-
-The interview simplification can keep `DeliveryAssignmentStrategy` as nearest-agent. The production-ready shape is still visible: state transitions are guarded, payment transitions are explicit, and assignment can evolve from nearest courier to batched dispatch without rewriting `Order`.
-
-## Reference implementation
-
-The core mechanism below is a guarded order state machine. It keeps transition rules in one place, which is exactly what prevents accidental moves such as `delivered -> cancelled`.
-
-```java
-import java.util.*;
-
-final class OrderStateMachine {
-    enum State {
-        PLACED, CONFIRMED, PREPARING, READY,
-        PICKED_UP, DELIVERED, CANCELLED
-    }
-
-    private static final Map<State, Set<State>> ALLOWED = Map.of(
-        State.PLACED, Set.of(State.CONFIRMED, State.CANCELLED),
-        State.CONFIRMED, Set.of(State.PREPARING, State.CANCELLED),
-        State.PREPARING, Set.of(State.READY),
-        State.READY, Set.of(State.PICKED_UP),
-        State.PICKED_UP, Set.of(State.DELIVERED),
-        State.DELIVERED, Set.of(),
-        State.CANCELLED, Set.of()
-    );
-
-    private State state = State.PLACED;
-
-    State current() {
-        return state;
-    }
-
-    void transitionTo(State next) {
-        if (!ALLOWED.getOrDefault(state, Set.of()).contains(next)) {
-            throw new IllegalStateException("Cannot move order from " + state + " to " + next);
-        }
-        state = next;
-    }
-
-    boolean canCancel() {
-        return ALLOWED.getOrDefault(state, Set.of()).contains(State.CANCELLED);
-    }
-}
-```
-
-## Complexity and trade-offs
-
-| Operation | Typical cost | Notes |
-|---|---:|---|
-| Cart validation | `O(i)` | Validate `i` items against current menu and availability. |
-| Idempotent order placement | `O(1)` average | Lookup by idempotency key before creating the order. |
-| State transition | `O(1)` | Single adjacency check. |
-| Courier candidate search | `O(c + d)` | Depends on scanned cells and nearby couriers. |
-| Batched dispatch | polynomial or heuristic | Better utilization, but more complex than one-order assignment. |
-
-- Idempotency protects users from double orders, but the key store must be part of the transaction boundary.
-- Capturing menu snapshots preserves receipt history, but requires careful handling when prices change between cart and checkout.
-- Batched courier assignment can improve efficiency, but may delay an individual order while the batch forms.
-- A strict state machine blocks invalid operations, but policy changes must be reflected as explicit transitions.
-
-## Further reading
-
-- [Refactoring Guru: State](https://refactoring.guru/design-patterns/state) — modeling the order lifecycle as guarded state transitions.
-- [Refactoring Guru: Strategy](https://refactoring.guru/design-patterns/strategy) — assignment, cancellation, and pricing policies as replaceable strategies.
-- [Stripe: Designing robust and predictable APIs with idempotency](https://stripe.com/blog/idempotency) — retry-safe order placement concepts.
-- [Uber Engineering: H3](https://www.uber.com/blog/h3/) — relevant spatial-indexing background for courier candidate search.
-- *Designing Data-Intensive Applications* — Martin Kleppmann — practical grounding for marketplace events, streams, and consistency boundaries.
-
----
-
-## What separated a pass from a fail here
-- You kept the discussion LLD, not dispatch-platform HLD.
-- You made the order state machine the spine.
-- You used Strategy for assignment without pretending to solve routing optimization.
-- You separated "strategy picks" from "repository atomically reserves."
-- You treated restaurant rejection, payment failure, and cancellation as first-class transitions.
-The pass is not "I can clone DoorDash." The pass is "I can move an order through a correct lifecycle with clean seams and bounded edge handling."
+[Question catalog](../interview-guide.html) · [Article template](interview-template.html)

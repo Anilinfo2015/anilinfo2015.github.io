@@ -1,0 +1,44 @@
+---
+title: "LLD Walkthrough: In-Memory Filesystem"
+description: "Tree ownership, canonical paths, atomic moves, and bounded byte storage."
+---
+<h1>In-Memory Filesystem</h1>
+
+<h2>1. Requirements</h2>
+<p>Create directories and files, read and replace bytes, list children, move entries, and remove empty directories or files. Multiple threads share one in-memory filesystem. Paths are absolute and case-sensitive. Bound total file content to 64 MiB, entries to 10000, and path depth to 128. Operations return copies rather than mutable internal objects.</p>
+
+<h2>2. Out of scope</h2>
+<p>Exclude disk persistence, permissions, symbolic links, hard links, recursive deletion, file handles, and append. Paths address entries at operation time; renaming an entry does not leave an alias. Bytes have no assumed text encoding. Replacement of an existing destination during move is deliberately unsupported.</p>
+
+<h2>3. Model and invariants</h2>
+<p><code>FileSystem</code> owns the root, quota counters, and a read/write lock. A <code>Directory</code> owns a map from child name to entry. A <code>File</code> owns an immutable byte array; every non-root entry has exactly one parent and one name.</p>
+<pre class="mermaid">
+classDiagram
+    class FileSystem
+    class Entry
+    class Directory
+    class File
+    FileSystem *-- Directory : root
+    Entry &lt;|-- Directory
+    Entry &lt;|-- File
+    Directory o-- Entry : children
+</pre>
+<p>The tree contains no cycles, child names are unique within each directory, and quota counters equal reachable content and entries. The root cannot be moved or deleted. Every successful mutation preserves the maximum depth, including descendants of a moved directory.</p>
+
+<h2>4. Public contract</h2>
+<p><code>mkdir(path)</code> and <code>createFile(path, bytes)</code> return entry metadata or <code>AlreadyExists</code>. <code>read(path) → bytes</code>, <code>write(path, bytes) → metadata</code>, <code>list(path) → sorted metadata[]</code>, <code>move(source, destination) → metadata</code>, and <code>remove(path) → void</code> additionally return applicable <code>NotFound</code>, <code>NotDirectory</code>, <code>IsDirectory</code>, <code>NotEmpty</code>, <code>InvalidMove</code>, or <code>QuotaExceeded</code>. All reject invalid paths with <code>InvalidPath</code>. Parent directories must already exist. Create and remove retries return existing/not-found errors; writing identical bytes is harmless, but there is no request deduplication.</p>
+
+<h2>5. Core flow</h2>
+<p>Canonicalize paths before lookup: require a leading slash, collapse repeated separators and dot segments, resolve double-dot segments without traversing above root, and reject NUL and excessive depth. Trailing separators are ignored. Traverse directory child maps one component at a time.</p>
+<p>For write, acquire the write lock, resolve a file, and check the replacement-size delta against the global quota. Allocate a defensive byte copy before swapping content and updating counters.</p>
+<p>For move, resolve source and destination parent under the write lock. Reject an occupied destination, root source, or a destination parent inside the source subtree. Walk parent links to detect that cycle; inspect subtree height to check resulting depth. Preallocate the new map entry, then detach and attach atomically, updating parent and name. Content quota is unchanged.</p>
+
+<h2>6. Trade-offs and extensions</h2>
+<p>A global read/write lock makes cross-directory moves simple but blocks unrelated writers. Per-directory locking is a possible extension only with a consistent lock ordering and explicit protection against concurrent ancestor moves.</p>
+
+<h2>7. Concurrency and failure handling</h2>
+<p>Reads hold a read lock through snapshot creation; mutations hold the write lock through publication. Allocation failure leaves the tree and counters unchanged. A process crash loses all entries. A durable version would need a journal covering both sides of a move, not separate directory saves.</p>
+
+<h2>8. Test cases</h2>
+<p>Create /a and /a/x containing three bytes; reading returns those bytes without exposing storage. Moving /a to /a/b fails with no mutation. Removing nonempty /a fails. /a/./x and /a/x resolve identically; /../../x is invalid. Concurrent creates of /a/x yield one success. Replacing a 10-byte file with 20 bytes increases usage by ten. A move producing depth 129 fails before detachment.</p>
+<p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

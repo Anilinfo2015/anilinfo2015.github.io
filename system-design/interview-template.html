@@ -1,0 +1,38 @@
+---
+title: "HLD interview article template"
+description: "Requirements, a working baseline, and two focused deep dives."
+---
+<h1>HLD interview article template</h1>
+<p>Start with a design that handles the requested features. Add scale and failure handling only after its limits are clear. Each worked article follows the sections below.</p>
+<h2>1. Requirements</h2>
+<ul>
+  <li><strong>Functional:</strong> three or four concrete user actions.</li>
+  <li><strong>Non-functional:</strong> numbered targets for latency, scale, consistency, durability, or availability. Treat numbers as interview assumptions, not measured product statistics.</li>
+</ul>
+<h2>2. Out of scope</h2>
+<p>Name the features excluded from this design. Authentication and resource authorization still apply to every API; an identity platform need not be designed here.</p>
+<h2>3. Core entities</h2>
+<p>List the records, their keys, and the relationships needed by the main flows. Include the invariant that must not break.</p>
+<h2>4. API</h2>
+<p>Show operations, important inputs, responses, and relevant errors. Specify pagination, ownership checks, and retry behavior where they affect correctness.</p>
+<h2>5. Basic design</h2>
+<p>Use a small Mermaid diagram and a numbered read/write flow. This baseline must cover every functional requirement; it does not yet need to meet the scale targets.</p>
+<pre class="mermaid">
+flowchart LR
+    Client --> Application
+    Application --> Database
+</pre>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Explain what the baseline makes easy and where it fails. Compare a concrete alternative, rather than listing technologies.</p>
+<h2>7. Scale estimate</h2>
+<p>State assumptions, units, arithmetic, and the decision affected by the result. Separate average from peak load and raw data from indexes and replicas. Do not calculate numbers that change nothing.</p>
+<h2>8. Deep dive 1</h2>
+<p>Address the first group of non-functional requirements: mechanism, partition key or contention boundary, failure behavior, and cost.</p>
+<h2>9. Deep dive 2</h2>
+<p>Address the remaining non-functional requirements. Explain retries, recovery, and the consistency guarantee instead of claiming “exactly once” without a boundary.</p>
+<h2>10. Check the design</h2>
+<p>Map every numbered non-functional requirement to one of the two deep dives. Include a failure scenario and an observable result. A target is a goal to test, not a guarantee created by drawing a cache.</p>
+<h2>Sources and review</h2>
+<p>The section order draws on <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">Hello Interview’s delivery framework</a>: requirements, core entities, API, a working high-level design, then deep dives. These are original worked designs, not copies of its solutions. The framework was checked through indexed search results on September 23, 2026; direct page access was unavailable.</p>
+<p>Before publishing: check requirement coverage, arithmetic, API semantics, diagram labels, recovery paths, and links. Remove rehearsed dialogue, unsupported claims about real companies, filler introductions, and repeated conclusions.</p>
+<p><a href="../interview-guide.html">Question catalog</a> · <a href="../low-level-design/interview-template.html">LLD template</a></p>
