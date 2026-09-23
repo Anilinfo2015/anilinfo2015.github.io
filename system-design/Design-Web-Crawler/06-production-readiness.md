@@ -17,6 +17,10 @@ Based on the requirements and SLO targets, key SLO-style targets are:
 - Crawl latency: p95 500ms
 - Freshness: 90% of content < 7 days
 
+> **Reader path — 5. Deep dives (reliability and operations):** [Separate scoped walkthrough](../interview-questions/web-crawler.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Security](05-security-auth.md) → production checks here → [requirements and baseline recap](01-foundations.md). SLOs, recovery, and deployment checks validate the chosen design rather than add new delivery stages.
+
 From the monitoring and observability plan:
 - 99.5% availability implies an error budget of ~3.6 hours/month.
 

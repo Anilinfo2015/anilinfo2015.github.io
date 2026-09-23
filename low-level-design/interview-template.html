@@ -1,14 +1,21 @@
 ---
-title: "LLD interview article template"
-description: "Requirements, object ownership, contracts, and testable behavior."
+title: "LLD delivery framework"
+description: "The shared delivery sequence adapted to object ownership, method contracts, collaboration, and testable behavior."
 ---
-<h1>LLD interview article template</h1>
-<p>An LLD answer describes an implementable component: who owns state, what each operation guarantees, and what happens on invalid input. It is not a smaller distributed-system diagram.</p>
-<h2>1. Requirements</h2>
-<p>List the supported operations and rules. State the execution model: single-threaded, concurrent in one process, or backed by shared storage. Add relevant non-functional constraints such as bounded memory or operation complexity.</p>
-<h2>2. Out of scope</h2>
+<h1>LLD delivery framework</h1>
+<p>Use the same delivery sequence as the <a href="../system-design/interview-template.html">HLD template</a>: requirements → core entities → API or system interface → high-level design → deep dives. Here, “high-level design” means the component’s object collaboration and working core logic, not a distributed-service architecture.</p>
+<p>This is this repository’s LLD adaptation of <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">Hello Interview’s system-design delivery framework</a>, not a claim that the source prescribes LLD details. An LLD answer must explain who owns state, what operations guarantee, and how the behavior can be tested.</p>
+<nav aria-label="Delivery stages">
+  <a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">Interface</a> · <a href="#data-flow">Optional data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a>
+</nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>List the supported operations, business rules, and legal state transitions. Agree on the main use case before introducing classes or patterns.</p>
+<h3>Non-functional requirements</h3>
+<p>State the execution model: single-threaded, concurrent in one process, or backed by shared storage. Add relevant constraints such as bounded memory, operation complexity, persistence, and deterministic behavior. Do not import distributed-system scale targets into an in-process problem.</p>
+<h3>Out of scope</h3>
 <p>Exclude unrelated UI, networking, persistence, or integrations explicitly. Keep anything required to preserve the stated rules.</p>
-<h2>3. Model and invariants</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p>Give each object one responsibility. Identify the owner of mutable state and the conditions that must hold after every operation. Use a small Mermaid class or state diagram.</p>
 <pre class="mermaid">
 classDiagram
@@ -18,17 +25,21 @@ classDiagram
     Service --> Record : owns
     Service --> Policy : consults
 </pre>
-<h2>4. Public contract</h2>
+<h2 id="api">3. API or system interface</h2>
 <p>List method signatures, results, and errors. Define duplicate calls, invalid identifiers, and legal state transitions. Prefer interfaces only where behavior actually varies.</p>
-<h2>5. Core flow</h2>
-<p>Describe the main operation in implementation order. Include validation, state changes, and the commit or lock boundary. Add pseudocode only if prose leaves the algorithm ambiguous.</p>
-<h2>6. Trade-offs and extensions</h2>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>For a multi-stage component such as a logging pipeline, show how an input becomes an output before assigning responsibilities to objects. Skip this section when the public methods and collaboration flow are enough.</p>
+<h2 id="high-level-design">4. High-level design</h2>
+<p>Walk the required operations through collaborating objects in implementation order. Include validation, state changes, and the commit or lock boundary. Use pseudocode where prose leaves an algorithm ambiguous, or implement the core methods if the interview requires working code. A class diagram alone is not a working design.</p>
+<h2 id="deep-dives">5. Deep dives</h2>
+<p>Refine the baseline using the requirements: correctness, complexity, concurrency, and relevant extension points. Choose substantive topics rather than a fixed number of patterns. Keep concrete tests here so the design’s guarantees remain checkable.</p>
+<h3>Trade-offs and extensions</h3>
 <p>Explain one meaningful design choice and one bounded extension. Do not add a pattern merely to name it.</p>
-<h2>7. Concurrency and failure handling</h2>
+<h3>Concurrency and failure handling</h3>
 <p>Name the shared resource and protect the whole invariant, not just individual collection operations. Keep external calls outside locks. State what survives process failure.</p>
-<h2>8. Test cases</h2>
+<h3>Test cases</h3>
 <p>Use concrete input and expected outcomes: the normal flow, an invalid operation, a boundary condition, and a race or retry where relevant. Check the non-functional constraint too.</p>
-<h2>Sources and review</h2>
-<p>The requirements → object model → contracts → core logic sequence is informed by <a href="https://www.hellointerview.com/learn/low-level-design/in-a-hurry/delivery">Hello Interview’s LLD delivery framework</a>. Concurrency and tests are explicit sections here so correctness remains visible. The framework was checked through indexed search results on September 23, 2026; direct page access was unavailable.</p>
+<h3>Publishing review</h3>
 <p>Before publishing: trace each operation to an owner, check state transitions and money/time units, verify the Mermaid diagram, and remove interview scripts and generic advice. Keep the explanation short enough to review in one sitting.</p>
+<p>All worked LLD answers use these stages, including <a href="parking-lot.html">parking lot</a> and <a href="lru-cache.html">LRU cache</a>. The <a href="00-the-45-minute-lld-framework.html">technique playbook</a> explains how to deliver the same sequence under interview constraints.</p>
 <p><a href="../interview-guide.html">Question catalog</a> · <a href="../system-design/interview-template.html">HLD template</a></p>

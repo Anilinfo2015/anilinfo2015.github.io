@@ -3,21 +3,25 @@ title: "Ticket booking: an interview design"
 description: "Exclusive seat holds, fenced expiry, and recoverable payment confirmation."
 ---
 <h1>Ticket booking</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> browse a show's seat availability; hold selected seats temporarily; pay and receive a confirmed booking.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Browse a show's seat availability; hold selected seats temporarily; pay and receive a confirmed booking.</p>
+<p>Failed-booking compensation remains necessary. The provider supports idempotent authorization, capture, void, refund, and lookup.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 50,000 peak availability reads and 5,000 hold attempts/second; target admitted hold p95 below 300 ms.</li>
   <li><strong>NFR2:</strong> never confirm a seat for two bookings or capture an order's accepted total more than once.</li>
   <li><strong>NFR3:</strong> preserve acknowledged holds and bookings through one zone failure; target 99.9% monthly booking-status availability.</li>
   <li><strong>NFR4:</strong> limit hold/payment/booking access to its owner, with zero cross-account ticket disclosure.</li>
 </ol>
-<h2>2. Out of scope</h2>
-<p>Resale, dynamic pricing, post-confirmation cancellation, and general-admission inventory are excluded. Failed-booking compensation remains necessary. The provider supports idempotent authorization, capture, void, refund, and lookup.</p>
-<h2>3. Core entities</h2>
+<h3>Out of scope</h3>
+<p>Resale, dynamic pricing, post-confirmation cancellation, and general-admission inventory are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Seat(showId, seatId, state, holdId, generation)</code>, <code>Hold(holdId, ownerId, expiresAt, totalMinor, currency)</code>, and <code>Booking(bookingId, holdId, state)</code> share a show partition. <code>PaymentAttempt(bookingId, action)</code> records provider operations. A seat is AVAILABLE, HELD, COMMITTING, or BOOKED; only its current hold generation may change ownership.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>GET /shows/{id}/seats?cursor&amp;limit</code> returns public seat states and an opaque cursor, capped at 200. <code>POST /holds {showId, seatIds}</code> requires authentication and Idempotency-Key, returning 201 with holdId, five-minute expiry, and a server-priced total. Identical retries return that hold; changed input or taken seats return 409. Limit requests to eight seats; invalid input returns 422. <code>POST /bookings {holdId, paymentToken}</code> returns 202 with bookingId; retries reuse the attempt, expired holds return 410. <code>GET /bookings/{id}</code> returns pending/confirmed/failed plus tickets only to its owner; otherwise 404. Never accept a client-supplied charge amount.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Buyer --> BookingAPI
@@ -30,14 +34,15 @@ flowchart LR
   <li>Before expiry, transition the owner's hold to COMMITTING and create the payment workflow.</li>
   <li>Authorize and capture funds; confirm the booking and seats transactionally after verified payment success. Serve status until resolved.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>Availability caches cannot promise ownership. Locks simplify multi-seat holds but hot shows generate contention. Short conditional-update transactions give all-or-nothing reservations without holding database locks during payment. COMMITTING seats stay unavailable during uncertain payments, trading temporary inventory loss for correctness.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: flash-sale admission</h3>
 <p>Assume five million daily availability reads: 58/second average versus a 50,000 flash-sale peak. At 10 KB/response, peak payload is 500 MB/second. A 99% cache hit rate reduces origin reads to 500/second, not hold contention. A 50,000-seat show supports at most 6,250 disjoint eight-seat holds. Use per-show admission control, not additional writers contending on hot rows.</p>
-<h2>8. Deep dive 1: Hot shows and durable holds</h2>
+<h3>Hot shows and durable holds</h3>
 <p>Cache seat-map snapshots briefly; stale availability causes a clean 409 at reservation. Partition writes by showId and lock requested seat rows in deterministic order. Validate availability, assign one hold generation, and commit hold plus request result on a cross-zone quorum before responding. A waiting room meters hold attempts to measured transaction capacity; reject excess work with 429 and retry guidance. Expiry workers release only HELD rows whose holdId/generation still match, using database time. Lagging expiry delays resale but never creates a second owner. Failover fences old writers; minority partitions cannot accept holds.</p>
-<h2>9. Deep dive 2: Payment uncertainty and private tickets</h2>
+<h3>Payment uncertainty and private tickets</h3>
 <p>Check ownership before atomically moving HELD to COMMITTING; create one booking per hold. Expiry never releases COMMITTING seats. Persist provider intents with stable booking/action keys, including refunds. Timeout means unknown: query or retry the same operation and deduplicate signed callbacks. After provider idempotency retention expires, require lookup/manual reconciliation, not another capture. Reserve seats until capture success or definitive failure, regardless of worker leases. Confirmed capture permits atomic booking publication. If completion becomes impossible, refund captures or void uncaptured authorizations before controlled release. Booking reads and ticket issuance verify ownership; caches are owner-scoped and logs omit tickets.</p>
-<h2>10. Check the design</h2>
-<p>NFR1,3 → dive 1; NFR2,4 → dive 2. Race expiry against payment start, then drop the capture response: either expiry wins without charging, or seats stay reserved until one booking/payment outcome is reconciled.</p>
+<h3>Check the design</h3>
+<p>NFR1,3 map to hot shows and durable holds; NFR2,4 map to payment uncertainty and private tickets. Race expiry against payment start, then drop the capture response: either expiry wins without charging, or seats stay reserved until one booking/payment outcome is reconciled.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

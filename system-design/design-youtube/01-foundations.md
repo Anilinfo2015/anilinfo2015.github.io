@@ -12,7 +12,11 @@ topics: ["Requirements Analysis", "Capacity Planning", "Basic HLD", "API Design"
 
 ## Introduction
 
-Imagine you're at YouTube's HQ. A user opens the "Trending" tab on their phone. Within milliseconds, they see the top 100 videos trending RIGHT NOW in their region. No lag, no stale data from "yesterday." 
+Imagine you're at YouTube's HQ. A user opens the "Trending" tab on their phone. Within milliseconds, they see the top 100 videos trending RIGHT NOW in their region. No lag, no stale data from "yesterday."
+
+> **Reader path:** [1. Requirements](../interview-questions/top-k.html#requirements) → [2. Core entities](../interview-questions/top-k.html#core-entities) → [3. API or system interface](../interview-questions/top-k.html#api) → [4. High-level design](../interview-questions/top-k.html#high-level-design) → [5. Deep dives](../interview-questions/top-k.html#deep-dives) · [HLD template](../interview-template.html).
+>
+> **Scope and series:** this foundation designs Top-K trending. The concise Top-K answer is a separate scoped walkthrough, not the same requirements, API, or sizing contract. Read the baseline here before [analytics](02-deep-dive-1.md); later chapters expand into transcoding, metadata, and operations as stage-5 topics.
 
 How does YouTube identify which videos are trending from a catalog of nearly a billion videos? How do they update that list every few seconds without crashing the database?
 
@@ -22,9 +26,11 @@ In this series, we'll design a system to find the top K (usually 100) videos vie
 
 ---
 
-## Functional Requirements
+## 1. Requirements
 
-### Core Features
+### Functional Requirements
+
+#### Core Features
 
 1. **Get Top K Videos**: Given a metric (views, engagement, shares), return the top-K videos
    - Input: metric, K (1-100), time window (1h/24h/7d), filters (region, category)
@@ -47,7 +53,7 @@ In this series, we'll design a system to find the top K (usually 100) videos vie
 
 ---
 
-## Non-Functional Requirements
+### Non-Functional Requirements
 
 | Requirement | Target |
 |---|---|
@@ -60,49 +66,14 @@ In this series, we'll design a system to find the top K (usually 100) videos vie
 
 ---
 
-## Capacity & Scale Estimation
+### Scope
 
-### Traffic at YouTube Scale
-
-**View Events** (Inbound Writes):
-- YouTube has ~1 billion views per day globally
-- QPS: 1B ÷ 86,400 seconds ≈ **11.6K QPS baseline**
-- Peak (2x): **~23K QPS**
-
-**Trending API Queries** (Outbound Reads):
-- Users browsing trending tab: 50K QPS
-- Recommendation engine queries: 60K QPS
-- Creator analytics: 10K QPS
-- **Total: 120K QPS baseline, 160K QPS peak**
-
-### Storage Estimation
-
-**Raw Metrics** (time-series data):
-- Per event: 200 bytes (video_id, timestamp, region, deltas)
-- Daily: 1B events × 200B = **200 GB/day**
-- 90-day retention: **18 TB**
-
-**Aggregated Metrics** (hourly):
-- ~10M active videos per hour
-- Per record: 100 bytes
-- 30-day storage: **720 GB**
-
-**Trending Snapshots**:
-- 24 hours × 200 regions × 50 categories = 240K snapshots/day
-- Per snapshot: 500 KB (top-100 + metadata)
-- Annual: **43.8 TB**
-
-### Bandwidth
-
-**Inbound** (Metrics writes):
-- 23K QPS × 200 bytes = **4.6 MB/sec**
-
-**Outbound** (API responses):
-- 160K QPS × 50 KB avg = **8 GB/sec** (with caching: 100-200 MB/sec)
+This foundation covers trending queries, metric collection, regional/category rankings, and historical snapshots. Video upload, transcoding, and playback are not the Top-K API designed here; later chapters discuss broader video-platform concerns.
 
 ---
 
-## Core Entities & Data Model
+<a id="core-entities--data-model"></a>
+## 2. Core entities
 
 ### Video Metadata
 ```sql
@@ -143,7 +114,8 @@ Size: ~100 KB (100 videos with metadata)
 
 ---
 
-## API Endpoints
+<a id="api-endpoints"></a>
+## 3. API or system interface
 
 ### 1. Get Top K Videos
 ```http
@@ -197,7 +169,10 @@ Returns recorded top-100 from that date (for analytics, reporting).
 
 ---
 
-## High-Level Architecture
+<a id="high-level-architecture"></a>
+## 4. High-level design
+
+Establish the metrics → leaderboard → serving path below before using scale estimates to select optimizations.
 
 ```mermaid
 graph LR
@@ -249,7 +224,53 @@ graph LR
 
 ---
 
-## Key Insights
+## 5. Deep dives
+
+### Capacity & Scale Estimation
+
+Use the traffic, retention, and bandwidth estimates below to evaluate stream processing, storage, and caching decisions. They are not a separate delivery stage or the sizing contract of later video-platform scenarios.
+
+#### Traffic at YouTube Scale
+
+**View Events** (Inbound Writes):
+- YouTube has ~1 billion views per day globally
+- QPS: 1B ÷ 86,400 seconds ≈ **11.6K QPS baseline**
+- Peak (2x): **~23K QPS**
+
+**Trending API Queries** (Outbound Reads):
+- Users browsing trending tab: 50K QPS
+- Recommendation engine queries: 60K QPS
+- Creator analytics: 10K QPS
+- **Total: 120K QPS baseline, 160K QPS peak**
+
+#### Storage Estimation
+
+**Raw Metrics** (time-series data):
+- Per event: 200 bytes (video_id, timestamp, region, deltas)
+- Daily: 1B events × 200B = **200 GB/day**
+- 90-day retention: **18 TB**
+
+**Aggregated Metrics** (hourly):
+- ~10M active videos per hour
+- Per record: 100 bytes
+- 30-day storage: **720 GB**
+
+**Trending Snapshots**:
+- 24 hours × 200 regions × 50 categories = 240K snapshots/day
+- Per snapshot: 500 KB (top-100 + metadata)
+- Annual: **43.8 TB**
+
+#### Bandwidth
+
+**Inbound** (Metrics writes):
+- 23K QPS × 200 bytes = **4.6 MB/sec**
+
+**Outbound** (API responses):
+- 160K QPS × 50 KB avg = **8 GB/sec** (with caching: 100-200 MB/sec)
+
+---
+
+### Key Insights
 
 1. **Decoupling is Critical**: Publishing events to Kafka decouples metric ingestion from database writes. This allows the system to handle 23K QPS write spikes without overwhelming the database.
 
@@ -276,14 +297,15 @@ Now that we understand what we're building, Part 2 focuses on HOW to build it at
 
 ---
 
-## Next: Part 2 - Scale Analysis
+<a id="next-part-2---scale-analysis"></a>
+## Next: Stage-5 expansions
 
-In Part 2, we'll identify and solve three critical bottlenecks:
+The foundation raises three scale questions for further deep dives:
 1. **Write Amplification**: 11.6K QPS view events × 4 tables = 46K writes/sec
 2. **Cache Stampede**: All leaderboards expire simultaneously → thundering herd
 3. **Query Explosion**: 200K possible region/category combos → which ones to compute?
 
-[→ Continue to Part 2: Scale Analysis](02-scale-analysis.md)
+[→ Continue to real-time analytics](02-deep-dive-1.md), then [transcoding economics](03-deep-dive-2.md), [metadata consistency](04-deep-dive-3.md), and [production readiness](05-production-readiness.md). These are focused expansions with their own stated scenarios, not repeated full designs.
 
 ---
 
@@ -293,4 +315,3 @@ In Part 2, we'll identify and solve three critical bottlenecks:
 - Data Freshness: < 10 seconds
 - API Latency Target: < 100ms P99
 - Availability SLO: 99.99%
-

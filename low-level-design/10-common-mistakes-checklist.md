@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "Anti-patterns", "Checklist", "Interview Technique"
 
 > Self-contained. A fast, scannable list of the mistakes that actually sink LLD interviews for otherwise-strong engineers — each paired with the concrete fix. Read it the night before an interview.
 
+**Stage-focused coaching, not a separate design framework:** check your work across [1. Requirements](interview-template.html#requirements), [2. Core entities](interview-template.html#core-entities), [3. API or system interface](interview-template.html#api), [4. High-level design](interview-template.html#high-level-design), and [5. Deep dives](interview-template.html#deep-dives). The numbered mistakes are checklist items, not delivery stages. Any minute targets below are illustrative local practice budgets, not timing guidance attributed to Hello Interview.
+
 Most LLD failures are not exotic. They're the same dozen mistakes repeated across candidates and problems. If you're strong at system design but keep stumbling in LLD, your leak is almost certainly on this list. Skim it, find the two or three that describe your past interviews, and drill the fixes.
 
 ---
@@ -19,7 +21,7 @@ Most LLD failures are not exotic. They're the same dozen mistakes repeated acros
 
 **1. Designing before scoping.**
 *Symptom:* you start drawing classes in minute one and build the wrong thing.
-*Fix:* spend the first 7 minutes writing an explicit IN-scope / OUT-of-scope list and getting the interviewer to nod. Design nothing until the fence is set.
+*Fix:* in the local 7-minute Requirements budget, write functional use cases, nonfunctional constraints, and an explicit OUT-of-scope list, then get the interviewer to nod. Design nothing until the fence is set.
 
 **2. Rabbit-holing into an algorithm.**
 *Symptom:* you spend 15 minutes on nearest-driver search, coin change, or debt simplification.
@@ -27,7 +29,7 @@ Most LLD failures are not exotic. They're the same dozen mistakes repeated acros
 
 **3. Never reaching a working flow.**
 *Symptom:* beautiful entity model, but you never showed a car actually getting parked.
-*Fix:* get a complete rough design end-to-end *before* deepening anything. A complete low-res design beats a perfect fragment. Protect 13+ minutes for walking the happy path.
+*Fix:* get a complete rough design end-to-end *before* deepening anything. High-level design in LLD means object collaboration and a working core flow, not distributed infrastructure. The illustrative 13-minute allocation protects that walkthrough; a complete low-res design beats a perfect fragment.
 
 **4. Going silent.**
 *Symptom:* you reason brilliantly in your head; the interviewer sees a quiet person writing.
@@ -39,7 +41,7 @@ Most LLD failures are not exotic. They're the same dozen mistakes repeated acros
 
 **6. Losing the clock.**
 *Symptom:* you look up at minute 40 with no summary and half a design.
-*Fix:* time-box each stage, enforce boundaries out loud, and reserve the last 3 minutes for a wrap-up. The summary is what they write in their notes.
+*Fix:* time-box each stage, enforce boundaries out loud, and reserve the last 3 minutes of the local budget for the final check within Deep dives. Check requirement coverage and deferred work; do not invent a sixth wrap-up stage.
 
 ---
 
@@ -83,7 +85,7 @@ Most LLD failures are not exotic. They're the same dozen mistakes repeated acros
 
 **15. Skipping edge cases entirely.**
 *Symptom:* only the happy path exists; lost ticket, empty lot, double-release aren't mentioned.
-*Fix:* in the stretch phase, *name* the edges fast (lost ticket, lot full, clock skew, idempotent release). Naming them scores nearly as well as handling them.
+*Fix:* in Deep dives, name the important edges (lost ticket, lot full, clock skew, idempotent release), explain the expected behavior, and outline tests. Naming an edge is a starting point, not a substitute for showing that the core design handles it.
 
 ---
 
@@ -107,20 +109,19 @@ Most LLD failures are not exotic. They're the same dozen mistakes repeated acros
 
 ```mermaid
 flowchart LR
-    A[Scope fence first] --> B[Responsibilities +<br/>composition, not hierarchy]
-    B --> C[Spine: API +<br/>narrow interfaces]
-    C --> D[Working happy path<br/>before depth]
-    D --> E[One concurrency point,<br/>bounded]
-    E --> F[Narrate + wrap up]
+    A[1. Requirements<br/>Scope + constraints] --> B[2. Core entities<br/>Responsibilities + composition]
+    B --> C[3. API or system interface<br/>Contracts + narrow seams]
+    C --> D[4. High-level design<br/>Object collaboration + core flow]
+    D --> E[5. Deep dives<br/>Trade-offs + concurrency + tests<br/>Final check]
 ```
 
-- Scope before you design; write IN/OUT and get a nod.
-- Responsibilities and composition over hierarchies; enums for data-only types.
-- Give it a spine: public API + narrow interfaces at variation points.
-- Complete working flow before deepening anything.
-- One contended resource, protected proportionately.
-- Patterns only where variation/lifecycle demands them.
-- Narrate trade-offs; check heading at the joints; protect the wrap-up.
+1. **Requirements:** scope before you design; write functional, nonfunctional, and out-of-scope items and get a nod.
+2. **Core entities:** responsibilities and composition over hierarchies; enums for data-only types.
+3. **API or system interface:** give it a spine with public methods and narrow interfaces at variation points.
+4. **High-level design:** complete the working object flow before deepening anything; use patterns only where variation/lifecycle demands them.
+5. **Deep dives:** protect contended invariants proportionately, explain trade-offs, outline tests, and finish with the final check.
+
+Narrate decisions and check heading at the joints throughout; communication is not an extra delivery stage.
 
 ---
 

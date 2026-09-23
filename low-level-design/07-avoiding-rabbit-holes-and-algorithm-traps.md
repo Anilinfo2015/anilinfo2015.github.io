@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "Interview Technique", "Time Management", "Anti-pat
 
 > Self-contained. This article targets the single most common way strong engineers fail LLD: they get pulled into a deep sub-problem — usually an algorithm — and never deliver the design the interviewer was actually scoring.
 
+**Stage-focused coaching, not a separate design framework:** fence scope in [1. Requirements](interview-template.html#requirements), protect the working object collaboration in [4. High-level design](interview-template.html#high-level-design), and choose algorithm detail deliberately in [5. Deep dives](interview-template.html#deep-dives). The escape maneuver below gets you back to that outline; it is not an alternative sequence.
+
 If you've walked out of an LLD interview thinking "I know I could have designed that, I just ran out of time / got stuck," this is almost certainly your failure mode. It is not a knowledge gap. It's a **prioritization and self-interruption** gap. LLD rewards a complete, clean, working model of a small domain. Rabbit holes trade that away for depth on something nobody asked about. This article is a field guide to spotting the holes and climbing out fast.
 
 ---
@@ -54,13 +56,13 @@ You can catch yourself *before* you're 8 minutes deep. Watch for these internal 
 flowchart LR
     A[Signal 1: You are<br/>optimizing, not modeling] --> D[STOP]
     B[Signal 2: Interviewer<br/>went quiet / flat] --> D
-    C[Signal 3: No new object<br/>in 3+ minutes] --> D
+    C[Signal 3: No artifact progress<br/>in 3+ minutes] --> D
     D --> E[Downgrade + seam<br/>+ move on]
 ```
 
 1. **You're optimizing, not modeling.** If your inner monologue is "how do I make this faster/optimal?" rather than "which object owns this?", you've left LLD and entered algorithms. Stop.
 2. **The interviewer went quiet.** Engaged interviewers react. Flat silence usually means "this isn't what I'm scoring." Pause and ask.
-3. **No new object or method has appeared in 3+ minutes.** LLD progress looks like the model growing. If the model is frozen while you scribble an algorithm, you're in a hole.
+3. **No useful design artifact has advanced in 3+ minutes.** Treat that interval as a local warning heuristic, not a mandatory budget. A traced flow, clarified invariant, or test expectation is progress too; the model need not keep growing. If none of those advances while you optimize an unrequested algorithm, pause.
 
 Any one of these fires → run the escape maneuver.
 
@@ -128,4 +130,4 @@ If the interviewer says, "Yes, implement LRU," then you go deeper. If they nod, 
 
 ## The one-paragraph takeaway
 
-Your LLD failures are very likely not modeling failures — they're rabbit-hole failures. Pre-commit a scope fence that parks the shiny sub-problems. Watch three signals (optimizing not modeling, interviewer silence, frozen model). When any fires, run "downgrade, seam, defer, move." Make depth interviewer-pulled, not self-pushed. Do this and the exact competence that used to sink you — your algorithm chops pulling you off course — stays safely in your pocket, available if asked, invisible if not.
+Your LLD failures are very likely not modeling failures — they're rabbit-hole failures. Pre-commit a scope fence that parks the shiny sub-problems. Watch three signals (optimizing not modeling, interviewer silence, stalled design artifacts). When any fires, run "downgrade, seam, defer, move." Make depth interviewer-pulled, not self-pushed. Do this and the exact competence that used to sink you — your algorithm chops pulling you off course — stays safely in your pocket, available if asked, invisible if not.

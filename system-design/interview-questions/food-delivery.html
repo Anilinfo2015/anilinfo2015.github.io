@@ -3,21 +3,25 @@ title: "Food delivery: an interview design"
 description: "Priced orders, recoverable payment steps, and authorized fulfillment."
 ---
 <h1>Food delivery</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> place a priced food order; let restaurants and couriers advance fulfillment; let customers track order status.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Place a priced food order; let restaurants and couriers advance fulfillment; let customers track order status.</p>
+<p>A provider supplies tokenized authorization, capture, void, and refunds; raw card data never enters this service.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 2,000 peak placements/second; target order-acceptance API p95 below 500 ms, excluding asynchronous payment-provider work.</li>
   <li><strong>NFR2:</strong> charge at most the accepted integer-minor-unit total once per order; prevent invalid fulfillment transitions.</li>
   <li><strong>NFR3:</strong> preserve acknowledged orders through one zone failure and target 99.9% monthly status availability.</li>
   <li><strong>NFR4:</strong> expose addresses only to the customer, fulfilling restaurant, and assigned courier; revoke courier access within five seconds of reassignment.</li>
 </ol>
-<h2>2. Out of scope</h2>
-<p>Menu search, courier optimization, promotions, tips, and post-pickup cancellations are excluded. A provider supplies tokenized authorization, capture, void, and refunds; raw card data never enters this service.</p>
-<h2>3. Core entities</h2>
+<h3>Out of scope</h3>
+<p>Menu search, courier optimization, promotions, tips, and post-pickup cancellations are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Quote(quoteId, customerId, restaurantId, lines, totalMinor, currency, expiresAt)</code> snapshots prices. <code>Order(orderId, state, version)</code> references that quote and delivery address. <code>PaymentStep(orderId, action)</code> records provider identity/status. <code>Assignment(orderId, courierId)</code> controls delivery access. Payment state and fulfillment state are separate; an order cannot become PREPARING without confirmed capture.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /orders {quoteId, addressId, paymentToken}</code> requires customer authentication and Idempotency-Key, returning <code>202 {orderId, state: PENDING_PAYMENT}</code>. Retries reuse the order; changed input returns 409, invalid quote/address 422. <code>POST /orders/{id}/transitions {action, expectedVersion, requestId}</code> returns new state or 409. Order owners cancel before pickup; restaurant staff accept/reject/mark ready; assigned couriers mark pickup/delivery. Internal <code>PUT /orders/{id}/assignment {courierId, expectedVersion, requestId}</code> is dispatch-service-only before pickup, returning the version or 409. <code>GET /orders/{id}</code> returns role-filtered data, or 404 for unauthorized callers. Persist mutation results for safe retries.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Customer --> OrderAPI
@@ -33,14 +37,15 @@ flowchart LR
   <li>Authorize funds, obtain restaurant acceptance, then capture before permitting preparation. Rejection triggers a void.</li>
   <li>Dispatch selects an available courier and commits assignment. Record readiness, pickup, and delivery; serve role-filtered status.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>Database transactions cannot include restaurant decisions or remote payments. Use a persisted workflow with pending states and compensations. Authorizing before acceptance ties up funds temporarily, but capturing afterward reduces refunds for rejected orders.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: workflow writes and status polling</h3>
 <p>Assume two million orders/day: about 23 placements/second average, far below the 2,000 peak. Twelve 500-byte workflow events/order produce 12 GB/day raw, or 36 GB with three copies before indexes. One million active customers polling every five seconds create 200,000 status reads/second. Push status changes and use brief versioned status caches; keep address authorization outside shared caches.</p>
-<h2>8. Deep dive 1: Fast, durable order state</h2>
+<h3>Fast, durable order state</h3>
 <p>Partition orders by orderId and quorum-replicate state, request results, and outbox events together. Return 202 after commit, not payment. Workers claim leased tasks with bounded retries; replay compares expectedVersion before changing state. Versioned caches serve non-sensitive status; authorization remains authoritative. Push gateways reduce polling; GET remains the recovery path. Dead-letter tasks page operators rather than abandoning orders. Per-restaurant admission limits bound overloaded kitchens' pending queues.</p>
-<h2>9. Deep dive 2: Payment recovery and address access</h2>
+<h3>Payment recovery and address access</h3>
 <p>Derive stable provider keys from orderId and action; store intent before calling. After a timeout, query that operation or retry its same key, never issue a fresh capture. Deduplicate signed callbacks. Beyond provider idempotency retention, unresolved operations require lookup/manual reconciliation, not another charge. If cancellation wins while capture is uncertain, enter CANCEL_PENDING; confirm capture then refund, or establish terminal non-capture then void. Refunds have stable identities. State guards prevent new capture intents after cancellation and preparation before payment. Address reads verify current role/assignment; courier capabilities last at most five seconds. Authorization outages fail closed; push payloads and logs omit addresses.</p>
-<h2>10. Check the design</h2>
-<p>NFR1,3 → dive 1; NFR2,4 → dive 2. Drop a successful capture response and retry placement: one order and one capture remain. Reassign the courier during recovery: the old courier loses address access within five seconds.</p>
+<h3>Check the design</h3>
+<p>NFR1,3 map to fast, durable order state; NFR2,4 map to payment recovery and address access. Drop a successful capture response and retry placement: one order and one capture remain. Reassign the courier during recovery: the old courier loses address access within five seconds.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

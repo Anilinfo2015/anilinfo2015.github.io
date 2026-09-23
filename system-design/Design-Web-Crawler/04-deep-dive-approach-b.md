@@ -18,6 +18,10 @@ From the URL frontier and queue/backpressure strategy, Redis was considered as a
 - you want very fast priority operations (sorted sets) without building more scheduling logic,
 - your crawler is small-to-medium and can tolerate a simpler HA story.
 
+> **Reader path — 5. Deep dives (frontier alternatives):** [Separate scoped walkthrough](../interview-questions/web-crawler.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Kafka approach](03-deep-dive-approach-a.md) → Redis trade-offs here → [security](05-security-auth.md). Compare alternatives against the same [working baseline](01-foundations.md#basic-hld-default-approach); do not repeat requirements or interfaces.
+
 If your target is “small crawler for a product feature” rather than “internet-scale indexing”, Redis can be a pragmatic trade.
 
 ## A second (independent) alternative: headless browser fetching

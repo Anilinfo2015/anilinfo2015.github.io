@@ -4,6 +4,10 @@
 
 We have analyzed our "Basic Approach" and found it wanting. The single database limits our throughput, and synchronous writes kill our latency. The system works for a prototype, but it won't survive a product launch.
 
+> **Reader path — 5. Deep dives (scaling choices):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Baseline bottlenecks](05-basic-design-details-tradeoffs.md) → scaling alternatives here → [ID generation](07-deep-dive-id-generation.md). These are stage-5 expansions of the [working baseline](04-basic-system-design.md), not a new delivery sequence.
+
 Now, we face the classic engineering question: **How do we scale?**
 
 There isn't just one answer. We can scale for **read speed** (caching), **write throughput** (async processing), or **data volume** (sharding). Below, we propose three distinct architectural evolutions.
@@ -59,6 +63,103 @@ graph TD
 *   **Latency**: Reads hitting Redis take <1ms. Writes return immediately.
 *   **Cost**: Redis is cheaper than scaling a master database.
 *   **Simplicity**: It keeps the reliable PostgreSQL as the source of truth.
+
+---
+
+### High-level architecture
+
+Now let's zoom out. How do the servers, databases, and caches talk to each other?
+
+#### Component Interactions
+The diagram below shows the lifecycle of a request.
+1.  **Traffic Entry**: All requests hit the **Load Balancer** first.
+2.  **Logic**: The **API Servers** (stateless) handle the business logic.
+3.  **Speed**: They check the **Cache (Redis)** immediately for redirects.
+4.  **Truth**: If the cache misses, they check the **Database**.
+5.  **Insights**: Analytics are sent asynchronously to a **Message Queue** so they don't slow down the redirect.
+
+```text
+┌──────────────────┐
+│  Users/Browser   │
+└────────┬─────────┘
+         │
+         │ 1. HTTP Request (GET short.app/abc)
+         │
+    ┌────▼──────────┐
+    │ Load Balancer │ ◄────── Health checks (Is server alive?)
+    │ (Nginx / ALB) │
+    └────┬──────────┘
+         │
+    ┌────┴───────────────────────┐
+    │   API Servers (Stateless)   │
+    │   (Horizontally Scaled)     │
+    └────┬──────────┬──────────┬──┘
+         │          │          │
+         │ 2. Read  │ 3. Miss? │ 4. Async Log
+    ┌────▼──┐  ┌───▼────┐  ┌──▼────────┐
+    │ Cache │  │Database│  │Msg Queue  │
+    │ Redis │  │ Postgres   │ (Kafka)   │
+    └───────┘  └────────┘  └────┬──────┘
+                                 │
+                            ┌────▼────────┐
+                            │ Analytics   │
+                            │ Worker      │
+                            └─────────────┘
+```
+
+### Data flow: The Life of a Request
+
+To truly understand the system, we must follow the path of data.
+
+#### Path 1: Creating a Link (The Write Path)
+This path is slower but consistent. We cannot afford to lose data here.
+1.  **Validation**: Is the URL valid? Is it malicious?
+2.  **Deduplication**: Has this user already shortened this link?
+3.  **Generation**: create a unique 7-character string.
+4.  **Storage**: Save to DB first (source of truth), *then* cache it.
+
+```text
+User Request
+    │
+    ├─ 1. Validate: Check URL format & safety blacklists
+    │
+    ├─ 2. Deduplicate: (Optional) Check if exact link exists for user
+    │
+    ├─ 3. Generate:
+    │   └─ Random: Generate unique Base62 ID
+    │   └─ Custom: Verify "my-alias" is not taken
+    │
+    ├─ 4. Persist (DB): Write to primary database (Master)
+    │
+    ├─ 5. Cache (Redis): Add to cache for immediate read availability
+    │
+    └─ 6. Respond: Return { "short_url": "..." }
+```
+
+#### Path 2: The Redirect (The Read Path)
+This is the "Hot Path". It must be blazing fast (<100ms).
+1.  **Cache First**: We check RAM (Redis) first. 90%+ of traffic should stop here.
+2.  **Database Fallback**: Only if the cache is empty do we hit the disk (DB).
+3.  **Fire-and-Forget**: We log the analytics event *after* sending the response (or asynchronously) so the user doesn't wait for us to count the click.
+
+```text
+User Clicks Link
+    │
+    ├─ 1. Cache Lookup (Redis):
+    │   └─ HIT: Return URL immediately (Speed: < 5ms)
+    │   └─ MISS: Continue to DB
+    │
+    ├─ 2. Database Lookup (Postgres):
+    │   └─ Fetch URL and populate Cache for next time
+    │   └─ (Speed: 10-50ms)
+    │
+    ├─ 3. Async Analytics:
+    │   └─ Send "Click Event" to Kafka queue (Don't wait for confirmation)
+    │
+    └─ 4. HTTP 301 Redirect: Use "Location" header
+```
+
+This relocated flow retains the earlier 301 example; the redirect-policy discussion above explains why an analytics-focused variant chooses 302.
 
 ---
 

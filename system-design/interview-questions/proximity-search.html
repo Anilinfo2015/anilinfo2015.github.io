@@ -3,16 +3,19 @@ title: "Design proximity search"
 description: "Nearby-place queries with spatial cells and versioned location updates."
 ---
 <h1>Design proximity search</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> publish or move a place; find nearby places; remove a place. Return the closest 100 within a radius, ordered by spherical distance then place ID.</p>
-<p><strong>Non-functional assumptions:</strong> N1: nearby-query p95 below 150 ms for radii up to 5 km and at most 20,000 candidate records. N2: support five million places and 10,000 queries/s peak. N3: make accepted moves and removals visible within five seconds and prevent older updates from resurrecting removed places after one worker failure.</p>
-<h2>2. Out of scope</h2>
-<p>Exclude travel times, friend tracking, geofencing, and personalized ranking. Places are public; publishing requires ownership. Over-budget queries return errors, not sampled results.</p>
-<h2>3. Core entities</h2>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Publish or move a place; find nearby places; remove a place. Return the closest 100 within a radius, ordered by spherical distance then place ID. Places are public; publishing requires ownership. Over-budget queries return errors, not sampled results.</p>
+<h3>Nonfunctional requirements</h3>
+<p><strong>Assumed targets:</strong> N1: nearby-query p95 below 150 ms for radii up to 5 km and at most 20,000 candidate records. N2: support five million places and 10,000 queries/s peak. N3: make accepted moves and removals visible within five seconds and prevent older updates from resurrecting removed places after one worker failure.</p>
+<h3>Out of scope</h3>
+<p>Exclude travel times, friend tracking, geofencing, and personalized ranking.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p>Place uses place ID, with owner, latitude, longitude, category, version, and deletion state. CellEntry uses (cell ID, place ID, version). Mutation uses (place ID, version). The invariant is monotonic place versions: only the current non-deleted record may appear, even if stale entries remain in old cells.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>PUT /places/{id}</code> accepts coordinates, category, expected version, and request key; returns 202 with the new version. Owner-scoped credentials are required; conflicts return 409, invalid coordinates 400. Same-key write retries return the original version. <code>GET /nearby?lat=&amp;lon=&amp;radius=</code> returns up to 100 IDs, distances, and observed versions, without pagination. Invalid or overly broad queries return 422; throttled client tokens receive 429. <code>DELETE /places/{id}</code> writes an idempotent tombstone. Unauthorized mutations return 403; unavailable complete queries return 503.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Owner --> API
@@ -25,14 +28,15 @@ flowchart LR
 <li>Use an index bounding region to select candidates, then calculate exact spherical distances and filter by radius.</li>
 <li>Remove deleted entries and sort remaining candidates by distance for the response.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>A spatial database provides consistency, but dense-city scans compete with writes. Spatial cells distribute reads better than hashing places alone. Smaller cells reduce candidates but increase fanout; fixed cell sizes handle uneven density poorly.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: candidate filtering and internal traffic</h3>
 <p>Five million places at 200 bytes require 1 GB raw, excluding indexes and replicas. At 500 candidates/query, 10,000 peak queries/s means five million distance checks/s, versus 500,000 at an assumed 1,000 average queries/s. Forty-byte candidates produce 200 MB/s peak internal traffic. Co-locate filtering with cell owners and cache stable cell contents.</p>
-<h2>8. Deep dive 1: Spatial partitions</h2>
+<h3>Spatial partitions</h3>
 <p>N1/N2 use hierarchical spherical cells, splitting dense cells and grouping sparse ones. Enumerate every cell intersecting the query circle, including neighbors across longitude wraparound; a center-cell-only lookup misses boundary results. Cell owners apply category filters and return candidates. The coordinator batch-validates current place records, computes Haversine distances, and keeps a bounded top-100 heap. Enforce the total candidate budget before returning results. Cache cell membership by generation, not arbitrary rounded user coordinates. Replicate hot cells; if a cell replica fails, retry another within the deadline or return 503 rather than incomplete nearby results.</p>
-<h2>9. Deep dive 2: Moving and deleting places</h2>
+<h3>Moving and deleting places</h3>
 <p>N3 keeps authoritative places and mutation outboxes together on place-ID shards with quorum commits. A worker adds the new cell entry before removing the old one, using conditional version writes; crashes replay both steps. Queries deduplicate place IDs and validate candidates against current coordinates and tombstones, so stale old-cell entries cannot leak old positions. A moved place can be temporarily absent from its new neighborhood until indexing catches up. Track the oldest unapplied mutation against five seconds and rebuild lost cell indexes from place snapshots plus mutation offsets. Retain tombstones beyond every replay checkpoint.</p>
-<h2>10. Check the design</h2>
-<p>N1/N2 map to dive 1; N3 maps to dive 2. Move a place across a cell boundary, crash the worker between writes, then delete it. Both neighborhoods must converge within five seconds, with no duplicated or resurrected result after replay.</p>
+<h3>Check the design</h3>
+<p>N1/N2 map to spatial partitions; N3 maps to moving and deleting places. Move a place across a cell boundary, crash the worker between writes, then delete it. Both neighborhoods must converge within five seconds, with no duplicated or resurrected result after replay.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

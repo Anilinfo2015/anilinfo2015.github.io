@@ -4,6 +4,10 @@
 
 We have optimized our database, our cache, and our code. But we still have a problem: **The Speed of Light**.
 
+> **Reader path — 5. Deep dives (edge and multi-region):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Production readiness](12-production-readiness.md) → edge trade-offs here → [case studies](14-case-studies.md). This is a geographic-latency expansion of the [working baseline](04-basic-system-design.md).
+
 If our servers are in Virginia (`us-east-1`):
 *   User in New York: 10ms latency.
 *   User in Tokyo: 150ms latency.

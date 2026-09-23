@@ -3,21 +3,24 @@ title: "Distributed cache: an interview design"
 description: "A tenant-isolated cache with explicit eviction and failover semantics."
 ---
 <h1>Distributed cache</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> read a key; set a value with a TTL; delete a key.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Read a key; set a value with a TTL; delete a key.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 100,000 peak operations/second, values at most 64 KB, and same-region p95 below 5 ms.</li>
   <li><strong>NFR2:</strong> target linearizable operations per key, including across leader failover; eviction may turn any value into a miss.</li>
   <li><strong>NFR3:</strong> target 99.9% monthly availability through one node failure.</li>
   <li><strong>NFR4:</strong> permit zero cross-tenant reads or writes and enforce a configured memory quota per tenant.</li>
 </ol>
-<h2>2. Out of scope</h2>
+<h3>Out of scope</h3>
 <p>Cross-key transactions, database persistence guarantees, and automatic source-database invalidation are excluded. Applications must tolerate cache misses and prevent stale database reads from repopulating invalidated entries.</p>
-<h2>3. Core entities</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Entry(tenantId, key)</code> contains bytes, a version, and expiresAt. <code>Shard(shardId)</code> tracks replicas and leader epoch. <code>Request(tenantId, requestId)</code> records recent mutations. The invariant is that a read never returns another tenant's bytes or a value already expired at its linearization point.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>GET /cache/{key}</code> returns 200 with bytes/version or 404 for a miss. <code>PUT</code> accepts bytes, TTL of 1–86,400 seconds, and optional expectedVersion; it returns the new version. <code>DELETE</code> returns 204. Credentials select tenant and read/write permissions. Mutations require requestId: identical retries within ten minutes return the original result without extending TTL; changed payloads return 409. Version mismatches, including a missing expected entry, return 409; oversized values return 413, quotas 429, unavailable quorum 503. After the retry window, resolve uncertainty with GET rather than replaying an old mutation.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Client --> Gateway
@@ -29,14 +32,15 @@ flowchart LR
   <li>Serialize reads and mutations on that key; check expiry during reads.</li>
   <li>Apply deletes and reclaim expired or evicted entries.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>A single memory node gives simple ordering but loses service on failure. Client-side sharding saves a gateway hop but complicates credential enforcement and topology changes. Keep gateways initially. Strict per-key ordering costs more than asynchronous replicas, but avoids resurrecting a recently deleted value after failover.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: shard capacity and memory headroom</h3>
 <p>Assume 20 million live entries averaging 1 KB payload plus 100 bytes metadata: 22 GB raw using decimal units. Three copies consume 66 GB before allocator overhead. Eight shards average 12,500 operations/second at peak, but one hot key can dominate a shard. Choose shard counts from measured single-shard latency and reserve at least 30% memory headroom.</p>
-<h2>8. Deep dive 1: Partitioning and tenant protection</h2>
+<h3>Partitioning and tenant protection</h3>
 <p>Hash tenantId plus key into movable shards. Gateways derive tenant identity from credentials; storage nodes also validate signed internal tenant context. Charge payload, metadata, and deduplication records to tenant budgets; use per-tenant admission limits and eviction so a noisy tenant cannot consume all memory. Serve hot reads only from the owning leader; coalescing concurrent reads reduces pressure without weakening consistency. Large values need stricter bandwidth limits. This addresses latency and isolation, but a single hot key remains a scaling boundary.</p>
-<h2>9. Deep dive 2: Ordered failover and expiry</h2>
+<h3>Ordered failover and expiry</h3>
 <p>Three cross-zone replicas maintain a consensus log. Writes require quorum; reads need a valid leader lease or quorum confirmation. Before returning an expiry miss, quorum-commit a tombstone conditional on the observed version; retry reads on conflict. Replicate deletions, evictions, and request results too. Preserve versions through expiration and snapshots; subsequent PUTs receive strictly newer versions. Transfer snapshot plus log and fence old owners during rebalancing. Monitor clock skew for TTL accuracy; suspend serving beyond its configured bound. Clock checks alone cannot prevent resurrection. Minority partitions return 503. Replication adds memory and network costs; benchmark the five-millisecond goal.</p>
-<h2>10. Check the design</h2>
-<p>NFR1,4 → dive 1; NFR2–3 → dive 2. Expire a key, return a miss, then promote a replica with a slower clock: reads remain misses and recreation has a newer version. Another tenant's identical textual key remains unaffected.</p>
+<h3>Check the design</h3>
+<p>NFR1,4 map to partitioning and tenant protection; NFR2–3 map to ordered failover and expiry. Expire a key, return a miss, then promote a replica with a slower clock: reads remain misses and recreation has a newer version. Another tenant's identical textual key remains unaffected.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a> · <a href="../Design-Distributed-Cache/01-introduction-and-requirements.html">Longer cache foundation</a></p>

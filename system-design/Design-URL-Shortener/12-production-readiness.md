@@ -5,6 +5,10 @@
 You can have the best architecture on paper, but if it wakes you up at 3 AM every night, it's a failure.
 "Production Readiness" is about Observability, Alerting, and Disaster Recovery.
 
+> **Reader path — 5. Deep dives (reliability and operations):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Security](11-security.md) → operational readiness here → [edge computing](13-deep-dive-4-edge-computing.md). Apply these checks to the [working baseline](04-basic-system-design.md) and its selected scaling changes.
+
 ---
 
 ## 1. Defining SLAs, SLOs, and SLIs

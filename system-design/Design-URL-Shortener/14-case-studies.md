@@ -4,6 +4,10 @@
 
 We have designed our system. Now let's look at how the real-world giants solved these problems.
 
+> **Reader path — 5. Deep dives (comparative trade-offs):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Edge computing](13-deep-dive-4-edge-computing.md) → case studies here → [deployment](15-deployment-guide.md). Use these comparisons after the [working baseline](04-basic-system-design.md), not as additional framework stages.
+
 ---
 
 ## 1. Bitly (The Enterprise Analytics Platform)

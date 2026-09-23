@@ -14,6 +14,10 @@ tags: [system-design, web-crawler, scalability, kafka, postgres, elasticsearch]
 ## What breaks in the basic design (bottlenecks)
 At small scale, a single queue + a few crawlers works fine. At 100K URLs/sec, several things become the “real” system design problem.
 
+> **Reader path — 5. Deep dives (bottlenecks and sizing):** [Separate scoped walkthrough](../interview-questions/web-crawler.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Requirements through working baseline](01-foundations.md) → scale decisions here → [Kafka frontier](03-deep-dive-approach-a.md). Estimates justify partitioning, backpressure, and storage choices within stage 5.
+
 From the URL frontier and queue/backpressure strategy, the URL frontier must simultaneously:
 - keep millions of pending URLs,
 - prioritize them,

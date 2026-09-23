@@ -4,6 +4,10 @@
 
 The architecture we've built uses standard patterns. Memorize these; they appear in almost every system design interview.
 
+> **Reader path — 5. Deep dives (patterns and evolution):** [Separate scoped walkthrough](../interview-questions/tag-management.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Security and operations](06-security-and-ops.md) → optional evolution here → [requirements recap](01-requirements-and-domain.md). Roadmap phases extend the [working baseline](02-basic-system-design.md), not the framework's five delivery stages.
+
 1.  **The "Sharding by Affinity" Pattern** (What we used for Tags):
     *   *The Concept*: Group data by its parent (User, Post, Issue) to make the read-path fast.
     *   *Where to use it*: Chat apps (Messages by Thread), Comments (Comments by Post).

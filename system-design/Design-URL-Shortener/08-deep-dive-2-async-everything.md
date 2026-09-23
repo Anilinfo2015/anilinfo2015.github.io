@@ -4,6 +4,10 @@
 
 In a standard web application, when a user asks for something, the server does all the work right then and there.
 
+> **Reader path — 5. Deep dives (asynchronous processing):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Caching](07-deep-dive-1-caching.md) → asynchronous work here → [database choices](09-deep-dive-3-dynamodb.md). The pipeline expands the [working baseline](04-basic-system-design.md), not the framework's numbered stages.
+
 **The "Synchronous" Flow (The Anti-Pattern for Scale):**
 1.  User clicks a link.
 2.  Server receives request.

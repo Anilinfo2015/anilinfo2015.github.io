@@ -4,11 +4,17 @@
 
 Before we worry about sharding 500 nodes globally, we start where every distributed system starts: a single process.
 
+> **Reader path — stages 4–5:** [High-level design](../interview-questions/distributed-cache.html#high-level-design) → [deep dives](../interview-questions/distributed-cache.html#deep-dives) · [HLD template](../interview-template.html). The concise answer is a separate scoped walkthrough; assumptions and contracts may differ.
+>
+> **Series:** [Requirements, entities, and interface](01-introduction-and-requirements.md) → single-node baseline here → internals below → [distributed scaling](03-scaling-challenges.md). Concurrency and eviction details expand stage 5 rather than restart the design.
+
 This article is intentionally “from scratch”. We are not installing Redis. We are designing the internal mechanics that any cache server must have: a memory index, TTL expiration, and an eviction policy that still works when **100 threads are hammering `GET` at the same time**.
 
 ---
 
-## 1. The Architecture: One Node to Rule Them All
+<a id="1-the-architecture-one-node-to-rule-them-all"></a>
+<a id="the-architecture-one-node-to-rule-them-all"></a>
+## 4. High-level design
 
 We strip away the complexity. No clusters, no ZooKeeper, no consensus algorithms.
 
@@ -38,7 +44,8 @@ graph TD
 
 ---
 
-## 2. Under the Hood: The Index Card Catalog
+<a id="2-under-the-hood-the-index-card-catalog"></a>
+### Under the Hood: The Index Card Catalog
 
 How does a single server answer 100,000 questions a second? It doesn't use a file system. It uses a **Hash Table**.
 
@@ -49,7 +56,7 @@ Imagine a giant hotel with millions of mail slots.
 
 **This is O(1) complexity.** It takes the same amount of time to find a user whether you have 10 users or 10 million.
 
-### The Problem of Infinity
+#### The Problem of Infinity
 You have infinite users, but finite RAM (64GB). Eventually, the hotel is full.
 When you try to add `user:999` and memory is full, you must kick someone out. But who?
 *   **Random?** Might delete popular data.
@@ -62,7 +69,11 @@ That last sentence is where production systems get interesting.
 
 ---
 
-## 3. Deep Dive: Internals & Concurrency (The LRU Lock Problem)
+## 5. Deep dives
+
+<a id="3-deep-dive-internals--concurrency-the-lru-lock-problem"></a>
+<a id="deep-dive-internals--concurrency-the-lru-lock-problem"></a>
+### Internals & Concurrency (The LRU Lock Problem)
 
 Let’s zoom in on a single node.
 
@@ -80,7 +91,7 @@ The important design insight is:
 
 Below are practical designs that preserve “reasonable LRU behavior” without turning every read into a contended write.
 
-### Option A (Best interview answer): Sharded Single-Writer (Actor Model)
+#### Option A (Best interview answer): Sharded Single-Writer (Actor Model)
 
 Instead of one shared `ConcurrentHashMap` + one shared LRU list, we build **N independent shards** inside the node.
 
@@ -99,7 +110,7 @@ Trade-offs:
 * `MGET` becomes a fan-out to multiple shards + join.
 * Per-shard capacity can be slightly imbalanced (mitigate with more shards than cores).
 
-### Option B: Segmented LRU (Lock Striping)
+#### Option B: Segmented LRU (Lock Striping)
 
 If you want a shared `ConcurrentHashMap` but reduced contention:
 
@@ -113,7 +124,7 @@ Effect:
 
 This is a very common compromise when strict global LRU is too expensive.
 
-### Option C: Buffered Access Updates (Make `GET` Mostly Read-Only)
+#### Option C: Buffered Access Updates (Make `GET` Mostly Read-Only)
 
 Strict LRU requires a list update on every read. Instead:
 
@@ -127,7 +138,7 @@ What you get:
 
 This approach is a workhorse in high-performance in-process caches.
 
-### Option D: CLOCK / Second-Chance (Atomic Bits, Not Pointer Surgery)
+#### Option D: CLOCK / Second-Chance (Atomic Bits, Not Pointer Surgery)
 
 Replace LRU list maintenance with:
 
@@ -144,14 +155,14 @@ Why it’s good:
 
 This is a classic “approximate LRU” policy that scales well.
 
-### What would I pick here?
+#### What would I pick here?
 
 Given your numbers (500 nodes, ~20k RPS/node):
 * A **single global lock** might still work, but it’s a risky bottleneck and scales poorly with traffic spikes.
 * The most robust design is **Option A (sharded single-writer)**: strict correctness inside each shard, no lock contention, simple to reason about.
 * If you must support multi-threaded direct access, combine **Option B (segmented LRU)** with **Option D (CLOCK)**.
 
-### Bonus: Efficient Expiration (TTL) Without Melting the CPU
+#### Bonus: Efficient Expiration (TTL) Without Melting the CPU
 
 TTLs look simple until you have millions of keys with different expiration times.
 
@@ -173,7 +184,7 @@ Practical approaches:
 
 This is a recurring theme in cache internals: **move “maintenance work” off the hot read path** and make it batchable.
 
-### Bonus: Memory Management (Why `malloc()` Can Become Your Hidden Bottleneck)
+#### Bonus: Memory Management (Why `malloc()` Can Become Your Hidden Bottleneck)
 
 In real caches, the allocator strategy is part of the design.
 
@@ -194,7 +205,8 @@ Two important edge cases to handle explicitly:
 
 ---
 
-## 4. The Anatomy of Latency (1.14ms)
+<a id="4-the-anatomy-of-latency-114ms"></a>
+### The Anatomy of Latency (1.14ms)
 
 Why does a request take 1.14ms? Let's trace it.
 
@@ -212,12 +224,13 @@ Why does a request take 1.14ms? Let's trace it.
 
 ---
 
-## 5. The Write Path vs Read Path
+<a id="5-the-write-path-vs-read-path"></a>
+### The Write Path vs Read Path
 
 **Reading (GET)** is safe. You just look things up.
 **Writing (SET)** is dangerous. It changes the state of the world.
 
-### The Race Condition
+#### The Race Condition
 Startups often write code like this:
 ```python
 # BAD CODE
@@ -238,16 +251,17 @@ In our cache, we expose atomic commands (or server-side scripting) so the server
 
 ---
 
-## 6. When the MVP Breaks
+<a id="6-when-the-mvp-breaks"></a>
+### When the MVP Breaks
 
 This single-node design is beautiful, but it has two hard ceilings.
 
-### Ceiling 1: Throughput (The "Traffic Jam")
+#### Ceiling 1: Throughput (The "Traffic Jam")
 A single process has a finite budget of CPU cycles and memory bandwidth.
 *   **Symptom**: Latency spikes. CPU hits 100%.
 *   **Reason**: You can't process requests faster than the CPU can cycle.
 
-### Ceiling 2: Capacity (The "Bucket Overflow")
+#### Ceiling 2: Capacity (The "Bucket Overflow")
 You have 64GB of RAM.
 *   **Symptom**: Hit ratio drops.
 *   **Reason**: Frequent evictions. You are deleting data (LRU) faster than you can use it. Your cache becomes a revolving door.

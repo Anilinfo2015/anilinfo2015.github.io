@@ -3,6 +3,10 @@
 ## 1. Introduction: Hitting the Wall
 Our MVP worked great in development. But at 50,000 writes per second, the single PostgreSQL instance is screaming. CPU is at 100%, and latencies are drifting into seconds.
 
+> **Reader path — 5. Deep dives (partitioning and hot tags):** [Separate scoped walkthrough](../interview-questions/tag-management.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Working baseline](02-basic-system-design.md) → scaling here → [analytics](04-deep-dive-analytics.md). The numbered topics expand stage 5 rather than replace the delivery sequence.
+
 We have two choices: buy a bigger machine (a surprisingly valid option, until it isn't), or **distribute the data**. This article explores how we shard our database to survive the scale, and the painful trade-offs we accept to get there.
 
 ---

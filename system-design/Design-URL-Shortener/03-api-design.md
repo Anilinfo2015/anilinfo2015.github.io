@@ -1,23 +1,30 @@
 # Article 3: REST API Design
 
-## The Contract: How the World Talks to Us
+## 3. API or system interface
+
+### The Contract: How the World Talks to Us
 
 Components and databases are useless if the outside world cannot interact with them. The API (Application Programming Interface) is the contract we sign with our users. It defines exactly what they can ask for and exactly what we promise to deliver.
 
+> **Reader path — 3. API or system interface:** [Separate scoped walkthrough](../interview-questions/url-shortener.html#api) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Core entities](02-core-entities-components.md) → this API contract → [working baseline](04-basic-system-design.md). The operations below expand stage 3.
+
 For our URL shortener, we will build a **RESTful API**. Why REST? Because it is cache-friendly, stateless, and universally understood by web browsers and HTTP clients. Simplicity is our goal.
 
-### API Overview
+#### API Overview
 *   **Base URL**: `https://short.app/api/v1` (Versioning is crucial for future-proofing)
 *   **Format**: JSON for everything (except the redirect itself)
 *   **Security**: Bearer Tokens for ownership validation
 
 ---
 
-## 1. The Creation Flow (Write Operations)
+<a id="1-the-creation-flow-write-operations"></a>
+### The Creation Flow (Write Operations)
 
 The first step in any user journey is creating content. This is where we validate, sanitize, and persist data.
 
-### Endpoint: Create a Short Link
+#### Endpoint: Create a Short Link
 This is our primary "Write" operation. It must handle two scenarios: creating a random link (fast) and requesting a custom alias (requires unique checks).
 
 **Definition**
@@ -51,7 +58,7 @@ We return the full object so the client can immediately display it.
 1.  **Idempotency**: If a user submits the *exact same* `long_url` twice, should we create two short codes? For this design, **no**. We return the existing `short_code`. This saves database space.
 2.  **Conflicts**: If `custom_code` is taken, we return a `409 Conflict` error immediately.
 
-### Endpoint: Manage Links (Update & Delete)
+#### Endpoint: Manage Links (Update & Delete)
 Users make mistakes. They need to fix titles or delete links that were posted in error.
 
 **Update (PUT)**: Limited scope. We allow changing metadata (titles, tags) but **never** the `long_url` or `short_code`. Why? because changing the destination of a live link breaks the trust of the internet.
@@ -60,11 +67,12 @@ Users make mistakes. They need to fix titles or delete links that were posted in
 
 ---
 
-## 2. The Consumption Flow (Read Operations)
+<a id="2-the-consumption-flow-read-operations"></a>
+### The Consumption Flow (Read Operations)
 
 This is where our system faces the fire. These endpoints must be optimized for speed.
 
-### Endpoint: The Redirect (Public)
+#### Endpoint: The Redirect (Public)
 This is the only endpoint that doesn't return JSON. It returns an HTTP redirection.
 
 **Definition**
@@ -80,7 +88,7 @@ Cache-Control: public, max-age=31536000
 ```
 *   **Why 301?**: A 301 status code tells the browser "This link has moved forever." The browser will cache this mapping on its own disk. The next time the user types `short.app/abc`, the browser won't even talk to our server; it will just go straight to the destination. This saves us money and makes the user experience instant.
 
-### Endpoint: Get Analytics
+#### Endpoint: Get Analytics
 Users love data. They want to know who clicked their links.
 
 **Definition**
@@ -105,11 +113,12 @@ We provide aggregated data (counts), not raw logs (privacy).
 
 ---
 
-## 3. Dealing with Failure (Error Handling)
+<a id="3-dealing-with-failure-error-handling"></a>
+### Dealing with Failure (Error Handling)
 
 A good API tells you exactly what went wrong. We don't just return "Error". We return structured, actionable details.
 
-### Standardized Error Format
+#### Standardized Error Format
 Every error follows this structure, allowing clients to show helpful UI messages.
 
 ```json
@@ -125,7 +134,7 @@ Every error follows this structure, allowing clients to show helpful UI messages
 }
 ```
 
-### Common HTTP Status Codes
+#### Common HTTP Status Codes
 *   **200 OK**: "Here is the data you asked for"
 *   **201 Created**: "I successfully built the thing"
 *   **204 No Content**: "I did it, but have nothing to say (e.g., Delete)"
@@ -135,7 +144,7 @@ Every error follows this structure, allowing clients to show helpful UI messages
 
 ---
 
-## Summary
+### Summary
 
 Our API is designed to be:
 1.  **Predictable**: Standard REST verbs and status codes.
@@ -165,7 +174,7 @@ Content-Type: application/json
 }
 ```
 
-### Example 2: Redirect (Happy Path)
+#### Example 2: Redirect (Happy Path)
 
 ```
 → Request
@@ -177,7 +186,7 @@ Location: https://example.com/article?id=123&utm=campaign
 Cache-Control: public, max-age=31536000
 ```
 
-### Example 3: Create Link (Custom Code Taken)
+#### Example 3: Create Link (Custom Code Taken)
 
 ```
 → Request
@@ -206,7 +215,7 @@ Content-Type: application/json
 }
 ```
 
-### Example 4: Rate Limit Exceeded
+#### Example 4: Rate Limit Exceeded
 
 ```
 → Request (100th request this hour for free tier)
@@ -234,9 +243,9 @@ Content-Type: application/json
 
 ---
 
-## Authentication & Authorization
+### Authentication & Authorization
 
-### API Key Authentication
+#### API Key Authentication
 
 ```
 Header-based:
@@ -253,7 +262,7 @@ Rotation:
   - Webhook notification on rotation
 ```
 
-### Rate Limiting Headers
+#### Rate Limiting Headers
 
 Every response includes quota info:
 
@@ -270,7 +279,7 @@ Means:
 
 ---
 
-## Summary: API Design
+### Summary: API Design
 
 **7 Core Endpoints**:
 1. `POST /links` - Create short link

@@ -4,6 +4,11 @@
 
 ### Authentication & Authorization
 Building a wall around the API isn't enough; we need internal checkpoints.
+
+> **Reader path — 5. Deep dives (security, operations, and sizing):** [Separate scoped walkthrough](../interview-questions/tag-management.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Consistency](05-deep-dive-consistency.md) → production checks here → [patterns and evolution](07-patterns-and-evolution.md). Capacity estimates support shard and cache decisions after the [working baseline](02-basic-system-design.md).
+
 *   **The Problem**: "Service A" calls "Tag Service". Should we trust it?
 *   **The Zero Trust Solution**: Even internal services must present a token (JWT) signed by the Gateway.
 *   **The Permission Check**: Before adding a tag, the Tag Service asks: *"Does this user actually own this Jira ticket?"* This check is slow, so we cache the "Yes/No" results for 5 minutes.

@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "OOD", "Composition", "Domain Modeling", "SOLID"]
 
 > Self-contained. This article attacks a specific failure: spending the interview hunting for inheritance hierarchies and "is-a" relationships, running out of time, and producing a class diagram that looks academic but doesn't *do* anything.
 
+**Stage-focused coaching, not a separate design framework:** develop responsibilities in [2. Core entities](interview-template.html#core-entities), refine variation seams in [3. API or system interface](interview-template.html#api), then prove object collaboration in [4. High-level design](interview-template.html#high-level-design). The short modeling recipe below is a local exercise within those stages; its minute targets are illustrative, not source-prescribed.
+
 Classic OOD advice tells you to find the nouns, build an inheritance taxonomy, and draw the class diagram. On the clock, this is a trap. Figuring out the "correct" class hierarchy is slow, it's contentious (reasonable engineers disagree for 10 minutes about whether `Truck` extends `Vehicle`), and — critically — **the interviewer is not scoring your taxonomy**. They're scoring whether your objects have clear responsibilities and collaborate to make the use case work. This article gives you a faster path to the same (better) model.
 
 ---
@@ -96,7 +98,7 @@ flowchart LR
 5. **Add an interface** only where behavior varies and you want it pluggable.
 6. Stop at **5–9 objects**. More than that in the first pass means you're modeling breadth you scoped out.
 
-That's it. No taxonomy hunt, no abstract-base debate. You'll finish with a model that's small, clear, and — because you led with responsibilities — actually ready to *act* in the flow stage.
+That's it. No taxonomy hunt, no abstract-base debate. You'll finish with a model that's small, clear, and — because you led with responsibilities — actually ready to *act* in the working core flow of High-level design.
 
 ---
 

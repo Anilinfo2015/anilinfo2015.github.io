@@ -4,6 +4,10 @@
 
 In the previous article, we built a functional URL shortener using a single PostgreSQL database and synchronous logic. While it works for a small startup, it has critical flaws that will cause it to collapse under scale.
 
+> **Reader path — 5. Deep dives (baseline bottlenecks):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Working baseline](04-basic-system-design.md) → limitations here → [scaling choices](06-proposed-solutions.md). Estimates below support those decisions rather than form a separate delivery stage.
+
 Let's rigorously analyze this "Basic Approach".
 
 ### A. The Scalability Bottleneck

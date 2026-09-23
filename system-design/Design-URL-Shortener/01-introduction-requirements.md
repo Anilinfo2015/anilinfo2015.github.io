@@ -1,6 +1,12 @@
+# URL Shortener: Requirements
+
 ## Introduction: What is a URL Shortener?
 
 A URL shortener is a service that converts long URLs into short aliases and redirects users when they click the alias.
+
+> **Reader path — 1. Requirements:** [Separate scoped walkthrough](../interview-questions/url-shortener.html#requirements) · [HLD template](../interview-template.html). Its assumptions and contracts may differ from this series.
+>
+> **Series order:** requirements → [core entities](02-core-entities-components.md) → [API](03-api-design.md) → [working baseline](04-basic-system-design.md) → [deep dives](05-basic-design-details-tradeoffs.md). Article numbers identify chapters, not additional framework stages.
 
 **Example**:
 ```
@@ -19,7 +25,9 @@ URL shorteners are ubiquitous (Bitly, TinyURL, goo.gl) but the engineering is no
 3. **Extreme latency sensitivity**: Users expect instant redirects (<100ms)
 4. **Diverse trade-offs**: Cost vs. consistency vs. reliability
 
-## Functional Requirements
+## 1. Requirements
+
+### Functional Requirements
 
 **R1: Create Short Link**
 ```
@@ -51,9 +59,9 @@ Users see all their created links
 Example: GET /my-links → returns list with pagination
 ```
 
-## Non-Functional Requirements
+### Non-Functional Requirements
 
-### Performance (Speed)
+#### Performance (Speed)
 
 ```
 Redirect Latency:
@@ -72,7 +80,7 @@ Create Link Latency:
 - Database query adds 10-100ms
 - Caching brings down to acceptable range
 
-### Availability (Uptime)
+#### Availability (Uptime)
 
 ```
 SLA: 99.9% uptime
@@ -86,7 +94,7 @@ Means:
   └─ Multi-region redundancy
 ```
 
-### Throughput (Scale)
+#### Throughput (Scale)
 
 ```
 Traffic Profile (5-year projection):
@@ -99,7 +107,7 @@ Year 5: 1B URLs, 500M daily redirects = 5,800 RPS peak
 For this guide, we'll design for Year 2: 580 RPS (with caching reduces to 50 RPS on database)
 ```
 
-### Consistency (Data Correctness)
+#### Consistency (Data Correctness)
 
 ```
 Strong Consistency Requirements:
@@ -113,7 +121,7 @@ Eventual Consistency OK for:
   └─ Admin dashboard updates
 ```
 
-### Durability (Data Loss)
+#### Durability (Data Loss)
 
 ```
 Guarantee: Zero URL losses
@@ -130,7 +138,7 @@ Recovery Point Objective (RPO):
   └─ Acceptable because links can be recreated
 ```
 
-## Requirements Summary Table
+### Requirements Summary Table
 
 | Requirement | Details | Notes |
 |---|---|---|
@@ -147,7 +155,8 @@ Recovery Point Objective (RPO):
 | **Cost** | < $500/month MVP | < $0.0001 per redirect at scale |
 
 
-## What We're NOT Building
+<a id="what-were-not-building"></a>
+### Scope: What We're NOT Building
 
 To keep scope manageable:
 

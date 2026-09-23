@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "Interview Signals", "Communication", "Judgment", "
 
 > Self-contained. This article is about the meta-skill that decides most LLD outcomes: understanding what the interviewer is *actually* asking for, moment to moment, so you spend your 45 minutes on what they're scoring.
 
+**Stage-focused coaching, not a separate design framework:** use these communication techniques to confirm [1. Requirements](interview-template.html#requirements), trace object collaboration in [4. High-level design](interview-template.html#high-level-design), and select depth in [5. Deep dives](interview-template.html#deep-dives). The rubric below helps you steer within the shared outline; it does not replace its stages.
+
 A recurring reason strong engineers fail LLD is not "I couldn't design it" — it's "I designed the wrong thing, in the wrong depth, at the wrong time." The interviewer is giving you a near-constant stream of signals about what they want. If you can read those signals, you stop guessing and start steering. This is a learnable skill, and it separates a clear pass from a "leaning no."
 
 ---
@@ -76,7 +78,7 @@ You are allowed — encouraged — to check your heading instead of guessing. Ch
 
 These turn a monologue into a collaboration. They also protect you: if you were about to rabbit-hole, the interviewer redirects you *before* you burn the time. Candidates who never check in are the ones who look up at minute 40 and realize they built the wrong thing.
 
-Do this at **natural checkpoints** — after finishing the entity list, after the happy path — not every 30 seconds (that reads as needy). Two or three well-placed checks across 45 minutes is the sweet spot.
+Do this at **natural checkpoints** — after Core entities, after the working core flow in High-level design — not every 30 seconds (that reads as needy). Two or three well-placed checks across a 45-minute practice session is a useful local target, not a source-prescribed budget.
 
 ---
 

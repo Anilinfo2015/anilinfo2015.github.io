@@ -4,6 +4,10 @@
 
 In our system design, we established that a URL shortener is extremely **Read-Heavy** (100:1 to 1000:1 ratio). This makes caching our most powerful tool. If we can serve a redirect from memory without hitting the database, we can handle aggressive traffic spikes with minimal cost.
 
+> **Reader path — 5. Deep dives (caching):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [ID generation](07-deep-dive-id-generation.md) → caching here → [asynchronous processing](08-deep-dive-2-async-everything.md). Read the [working baseline](04-basic-system-design.md) before this latency and memory-sizing expansion.
+
 This article details the "Caching-First" architecture.
 
 ---

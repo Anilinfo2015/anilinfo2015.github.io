@@ -2,6 +2,10 @@
 
 The moment a user hits play on a YouTube video, the counter increments. Not eventually, not in 5 minutes—instantly. You refresh the page and see 1,000 more views than a moment ago. This feels like magic. It's actually one of the most technically intricate problems at YouTube's scale, and every design choice carries a $10M+ cost penalty if wrong.
 
+> **Reader path — 5. Deep dives (analytics):** [Separate scoped Top-K walkthrough](../interview-questions/top-k.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ from this chapter's analytics scenario.
+>
+> **Series:** [Top-K requirements through working baseline](01-foundations.md) → high-volume analytics here → [transcoding](03-deep-dive-2.md). Treat this chapter's scale as a deep-dive scenario, not a replacement for the foundation's requirements.
+
 In this part, we'll solve the core problem: **How do you record 1 million view events per second, aggregate them, and display accurate counters to billions of users?**
 
 Let's start by exploring what *doesn't* work.
@@ -555,4 +559,3 @@ In the next part, we tackle a different hard problem: **transcoding at scale**. 
 - Eventual consistency (30s lag) enables 100x scale vs strong consistency
 - Monitoring detects shard skew, Kafka lag, and counter divergence
 - Total cost: ~$1.2M/year for 1M QPS analytics infrastructure
-

@@ -5,6 +5,10 @@
 In Article 1, we manually created a database. In Article 16, that is forbidden.
 A Senior Engineer defines infrastructure as code. If the data center burns down, we can rebuild the entire company in 10 minutes with one command: `terraform apply`.
 
+> **Reader path — 5. Deep dives (deployment):** [Separate scoped walkthrough](../interview-questions/url-shortener.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Case studies](14-case-studies.md) → deployment expansion here → [requirements recap](01-introduction-requirements.md). Infrastructure and release steps implement the [working baseline](04-basic-system-design.md) and chosen deep dives; they are not a replacement delivery framework.
+
 ---
 
 ## 1. The Container Strategy (Docker)

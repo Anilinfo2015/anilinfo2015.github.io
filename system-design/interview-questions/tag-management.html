@@ -3,21 +3,25 @@ title: "Tag management: an interview design"
 description: "Tenant-scoped tags, reliable assignments, and permission-filtered discovery."
 ---
 <h1>Tag management</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> create named tags; attach or detach tags on resources; find authorized resources carrying a tag.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Create named tags; attach or detach tags on resources; find authorized resources carrying a tag.</p>
+<p>Each product supplies a resource-authorization adapter; designing its identity system is unnecessary, but calling it is not optional.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 20,000 peak searches and 2,000 mutations/second, with search p95 below 200 ms.</li>
   <li><strong>NFR2:</strong> provide immediate authoritative assignment reads after acknowledgement; target search-index convergence within five seconds for 99% of changes.</li>
   <li><strong>NFR3:</strong> lose no acknowledged assignment after one zone failure.</li>
   <li><strong>NFR4:</strong> expose zero cross-tenant or unauthorized resource identifiers; check current resource permissions before returning results.</li>
 </ol>
-<h2>2. Out of scope</h2>
-<p>Tag merging, hierarchical taxonomies, full-text search, and analytics are excluded. Each product supplies a resource-authorization adapter; designing its identity system is unnecessary, but calling it is not optional.</p>
-<h2>3. Core entities</h2>
+<h3>Out of scope</h3>
+<p>Tag merging, hierarchical taxonomies, full-text search, and analytics are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Tag(tenantId, tagId, normalizedName)</code> has a tenant-local unique normalized name. <code>Assignment(tenantId, resourceKey, tagId)</code> is unique, with a mutation version. A resourceKey includes product, type, and id. The invariant is that assignments join resources and tags from the same tenant, without duplicate edges.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /tags {name}</code> returns 201 with tagId; invalid names return 422 and duplicate names 409. Idempotency-Key retries return the original result; changed payloads return 409. <code>PUT /resources/{key}/tags/{tagId}</code> and DELETE return 204 idempotently after checking resource edit permission and tenant membership. <code>GET /resources/{key}/tags</code> reads authoritative assignments with view permission. <code>GET /tags/{id}/resources?cursor&amp;limit</code> returns up to 100 authorized resources and an opaque cursor. Credentials determine tenant. Inaccessible resources/tags return 404; unavailable authorization returns 503 rather than unfiltered results.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Client --> TagAPI
@@ -29,14 +33,15 @@ flowchart LR
   <li>Authorize the resource, then insert or delete its assignment transactionally.</li>
   <li>Query the reverse assignment index, check each candidate's permissions, and return a bounded page.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>A transactional reverse index makes discovery fresh but hot tags concentrate reads. An asynchronous search index separates query load at the cost of temporarily incomplete results. Choose asynchronous discovery once database measurements justify it, while keeping resource-specific reads authoritative. Permission filtering means some result pages will be short.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: assignment edges and index cost</h3>
 <p>Assume 100 million resources averaging ten tags: one billion assignment edges. At 80 bytes/edge, raw storage is 80 GB; three copies require 240 GB before indexes. A second reverse index adds substantial storage. At 2,000 peak mutations/second and 200-byte events, index propagation consumes 400 KB/second before replication. Partition edges before introducing a general search engine.</p>
-<h2>8. Deep dive 1: Query partitions and freshness</h2>
+<h3>Query partitions and freshness</h3>
 <p>Partition primary assignments by tenantId plus resource hash. Build reverse-index buckets by tenantId, tagId, and resource hash so a popular tag is not confined to one node. Merge bucket results using deterministic resource-key ordering and authenticated-encrypted per-bucket continuation positions. Versioned outbox events apply only if newer than the indexed state; retain deletion versions against reordered updates. Track publication lag and replay failed events. Confirm candidates against authoritative assignments before returning them; this removes stale deletions, although new assignments can remain absent until indexed. Fan-out and filtering consume the latency budget, so cap work per page.</p>
-<h2>9. Deep dive 2: Durable, authorized mutations</h2>
+<h3>Durable, authorized mutations</h3>
 <p>Commit each assignment and its outbox event in the same quorum-replicated transaction. Unique keys make retried attachments harmless; detach retries do not manufacture extra events. Mutation checks bind the caller, tenant, and exact resource operation. Search reads batch-check current permissions before exposing identifiers; never return unfiltered totals or encode raw identifiers in client-readable cursors. Authorization failures fail closed. Encrypt storage and audit permission decisions without logging private resource names. A permission change concurrent with a request follows the authorization service's defined check-time ordering, not an eventual search-index ACL copy.</p>
-<h2>10. Check the design</h2>
-<p>NFR1–2 → dive 1; NFR3–4 → dive 2. Stop indexing, detach a resource, then revoke access: search must not return it, authoritative reads reflect the detach immediately, and lag alarms fire before recovery replays the backlog.</p>
+<h3>Check the design</h3>
+<p>NFR1–2 map to query partitions and freshness; NFR3–4 map to durable, authorized mutations. Stop indexing, detach a resource, then revoke access: search must not return it, authoritative reads reflect the detach immediately, and lag alarms fire before recovery replays the backlog.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a> · <a href="../Design-Tag-Management-Service/01-requirements-and-domain.html">Longer tag-management foundation</a></p>

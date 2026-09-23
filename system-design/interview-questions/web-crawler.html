@@ -3,21 +3,26 @@ title: "Web crawler: an interview design"
 description: "A durable crawl frontier with politeness and network safety."
 ---
 <h1>Web crawler</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> submit public seed URLs; fetch pages and discover links within a job budget; retrieve job progress and captured pages.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#data-flow">Data flow</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Submit public seed URLs; fetch pages and discover links within a job budget; retrieve job progress and captured pages. Jobs specify allowed domains, depth, page count, and byte budgets.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 10,000 peak fetches/second and p95 eligible-frontier wait below 60 seconds under admitted load.</li>
   <li><strong>NFR2:</strong> enforce at most one concurrent request and one request start/second per origin, or a stricter robots policy.</li>
   <li><strong>NFR3:</strong> lose no acknowledged job or completed-page metadata after one worker or zone failure; repeated fetching is acceptable.</li>
   <li><strong>NFR4:</strong> block all non-public network destinations and allow only job owners to access results.</li>
 </ol>
-<h2>2. Out of scope</h2>
-<p>Search ranking, authenticated websites, JavaScript execution, and bypassing paywalls or robots restrictions are excluded. Jobs specify allowed domains, depth, page count, and byte budgets.</p>
-<h2>3. Core entities</h2>
+<h3>Out of scope</h3>
+<p>Search ranking, authenticated websites, JavaScript execution, and bypassing paywalls or robots restrictions are excluded.</p>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Job(jobId, ownerId, budget)</code>, <code>Frontier(jobId, normalizedUrl)</code>, <code>Origin(originKey, nextAllowedAt)</code>, and <code>Capture(jobId, url, fetchGeneration)</code> are durable records. Normalize host case and fragments without assuming query parameters are interchangeable. An origin's scheduling lease must have only one valid holder.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /crawl-jobs {seeds, allowedDomains, maxPages, maxDepth}</code> requires an authenticated principal and Idempotency-Key; return <code>202 {jobId}</code>, 422 for invalid limits, or 409 for a reused key with different input. Identical retries return the job. <code>GET /crawl-jobs/{id}</code> returns counters/state. <code>GET /crawl-jobs/{id}/pages?cursor&amp;limit</code> returns capture metadata and a continuation cursor, capped at 100 results. Every result endpoint checks ownership and returns 404 for inaccessible jobs. Downloads use short-lived owner-scoped URLs.</p>
-<h2>5. Basic design</h2>
+<h2 id="data-flow">Data flow (optional)</h2>
+<p>Seeds enter a normalized, deduplicated frontier. Eligible URLs pass origin scheduling and network-policy checks before fetching; captured bodies yield stored results and new in-scope links. Discovered links re-enter the frontier within the job's depth, page, and byte budgets, while redirects also pass destination-origin scheduling.</p>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     API --> JobDatabase
@@ -32,14 +37,15 @@ flowchart LR
   <li>Lease an eligible URL, check robots, fetch within limits, and store the body.</li>
   <li>Commit capture metadata, discovered in-scope URLs, and progress; serve paginated results.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>A database frontier is easy to inspect and deduplicate, but scanning for work gets expensive. A plain FIFO queue scales dispatch yet lets a slow origin block useful work. Partition origin queues and index nextAllowedAt. Exact URL deduplication costs storage; a Bloom filter alone would silently skip some pages.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: body retention and ingress</h3>
 <p>Assume 100 million pages/day: 1,157 fetches/second on average. At 200 KB compressed per page, this is 20 TB/day before replicas; peak ingress is 2 GB/second. Seven-day body retention needs 140 TB raw. Use object storage and enforce byte budgets before expanding worker count; metadata belongs in a separate store.</p>
-<h2>8. Deep dive 1: Safe, polite scheduling</h2>
+<h3>Safe, polite scheduling</h3>
 <p>Hash origins to scheduler partitions; a durable, fenced lease controls each origin's start times. Robots retrieval consumes that budget; unreadable robots policies pause crawling. Stop dispatch when lease renewal fails; replacement owners wait for outstanding fetch deadlines before resuming. Apply Retry-After and backoff; paused origins are not eligible. Every redirect re-enters destination-origin scheduling. An egress proxy resolves and pins validated public IPs, rejects private/link-local IPv4 and IPv6 ranges, and repeats validation for every redirect. Disable ambient credentials and cap redirects, response bytes, and decompression. These checks prevent the crawler becoming an internal-network client.</p>
-<h2>9. Deep dive 2: Recoverable captures and private results</h2>
+<h3>Recoverable captures and private results</h3>
 <p>Workers write immutable blobs before committing capture metadata and new frontier rows in a replicated transaction. Retry using the same fetch-generation identifier; uniqueness prevents double-counting completed captures. Expired leases requeue work, so network fetches remain at-least-once. Sweep unreferenced blobs after a grace period. Store metadata across zones, encrypt bodies, and enforce job ownership at listing and download issuance. Download gateways verify caller identity against owner-bound capabilities; storage buckets are never public. Monitor oldest eligible work and reject new jobs when admitted capacity cannot meet the wait target.</p>
-<h2>10. Check the design</h2>
-<p>NFR1–2 → dive 1; NFR3 → dive 2; NFR4 → both. Kill a worker after blob upload: one capture eventually appears. Redirect a test URL to a private address: observe a policy rejection and no outgoing private-network connection.</p>
+<h3>Check the design</h3>
+<p>NFR1–2 map to safe, polite scheduling; NFR3 maps to recoverable captures; NFR4 needs both network-policy enforcement and private result access. Kill a worker after blob upload: one capture eventually appears. Redirect a test URL to a private address: observe a policy rejection and no outgoing private-network connection.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a> · <a href="../Design-Web-Crawler/01-foundations.html">Longer crawler foundation</a></p>

@@ -2,6 +2,10 @@
 
 You've built a beautiful system. Real-time analytics at 1M QPS. Efficient transcoding saving billions in bandwidth. Metadata consistency across PostgreSQL, Elasticsearch, Redis. The architecture is sound.
 
+> **Reader path — 5. Deep dives (reliability, security, and operations):** [Separate scoped video-streaming walkthrough](../interview-questions/video-streaming.html#deep-dives) · [HLD template](../interview-template.html). Its assumptions and contracts may differ.
+>
+> **Series:** [Metadata consistency](04-deep-dive-3.md) → production checks here → [Top-K foundation recap](01-foundations.md). Apply each scenario's own targets; these broader video-platform topics expand stage 5 rather than replace the five-stage framework.
+
 Then 2 AM rolls around. Elasticsearch cluster in APAC goes down. Kafka broker crashes. CDN sees unexpected traffic surge. Creator uploads a file with invalid codec. An alert fires. Then another. Then twenty more.
 
 This part is about **operating** YouTube at scale: SLOs (Service Level Objectives), multi-region failover, incident response, security, compliance, cost optimization. The systems that separate "technically correct" from "actually works in production."

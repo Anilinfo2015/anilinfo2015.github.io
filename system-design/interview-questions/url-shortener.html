@@ -3,21 +3,24 @@ title: "URL shortener: an interview design"
 description: "Immutable short links, fast redirects, and bounded revocation."
 ---
 <h1>URL shortener</h1>
-<h2>1. Requirements</h2>
-<p><strong>Functional:</strong> create a short link; redirect a visitor; let its owner disable it.</p>
+<nav aria-label="Answer stages"><a href="#requirements">Requirements</a> · <a href="#core-entities">Core entities</a> · <a href="#api">API or system interface</a> · <a href="#high-level-design">High-level design</a> · <a href="#deep-dives">Deep dives</a></nav>
+<h2 id="requirements">1. Requirements</h2>
+<h3>Functional requirements</h3>
+<p>Create a short link; redirect a visitor; let its owner disable it.</p>
+<h3>Nonfunctional requirements</h3>
 <ol>
   <li><strong>NFR1:</strong> assume 50,000 peak redirects/second with server-side p95 below 50 ms.</li>
   <li><strong>NFR2:</strong> target 99.95% monthly redirect availability.</li>
   <li><strong>NFR3:</strong> never assign one alias to two destinations; preserve acknowledged creates through one availability-zone failure.</li>
   <li><strong>NFR4:</strong> allow only owner mutations and stop redirects within five seconds of acknowledged disabling.</li>
 </ol>
-<h2>2. Out of scope</h2>
+<h3>Out of scope</h3>
 <p>Custom domains, editable destinations, analytics, and destination-content moderation are excluded. Links are public bearer references, not access controls for destination content.</p>
-<h2>3. Core entities</h2>
+<h2 id="core-entities">2. Core entities</h2>
 <p><code>Link(alias PK, ownerId, destination, state, expiresAt)</code> has an immutable destination. <code>CreateRequest(ownerId, requestId)</code> stores the request hash and resulting alias. Retain disabled aliases as tombstones: an old printed link must never point to a new owner.</p>
-<h2>4. API</h2>
+<h2 id="api">3. API or system interface</h2>
 <p><code>POST /links {destination, expiresAt}</code> requires authentication and an Idempotency-Key; it returns <code>201 {alias, shortUrl}</code>. Accept only HTTP(S) URLs; invalid input returns 422. Reusing a key with different input returns 409; matching retries return the recorded result. <code>GET /{alias}</code> returns 302 with Location, 404 if unknown, or 410 if disabled/expired. <code>DELETE /links/{alias}</code> checks ownership, returns 204 on repeated disabling, and 403 for another owner. Redirect responses use <code>Cache-Control: no-store</code>.</p>
-<h2>5. Basic design</h2>
+<h2 id="high-level-design">4. High-level design</h2>
 <pre class="mermaid">
 flowchart LR
     Visitor --> App
@@ -29,14 +32,15 @@ flowchart LR
   <li>Read the link by alias, check state and expiry, then redirect.</li>
   <li>Disable the owner's link transactionally; retain its identity.</li>
 </ol>
-<h2>6. Trade-offs and bottlenecks</h2>
+<h2 id="deep-dives">5. Deep dives</h2>
+<h3>Trade-offs and bottlenecks</h3>
 <p>A relational unique index makes collision handling straightforward, but every redirect hits storage. Sequential identifiers avoid random collisions yet reveal creation order. Random 96-bit identifiers are less enumerable; uniqueness still comes from insertion, not probability. Retry generation on conflict.</p>
-<h2>7. Scale estimate</h2>
+<h3>Scale estimate: redirect caching and storage growth</h3>
 <p>Assume one million creations/day and ten million average redirects/hour: about 2,778 redirects/second, versus the 50,000 peak. At 300 bytes/link, one year adds 109.5 GB raw; three replicas need 328.5 GB before indexes. A 99% application-cache hit rate would reduce peak database reads to 500/second. Measure that hit rate before choosing storage shards.</p>
-<h2>8. Deep dive 1: Fast redirects during failures</h2>
+<h3>Fast redirects during failures</h3>
 <p>Use regional application caches keyed by alias and replicated database readers. Coalesce concurrent misses for hot links, and cap negative-cache lifetimes to avoid hiding newly created aliases. Independently scale stateless redirect workers; use timeouts and admission limits rather than unlimited database retries. Cache entries expire at the earlier of link expiry or five seconds after the authoritative read began. Check this freshness deadline before emitting any redirect, including cache misses. This sacrifices some outage availability for revocation correctness; load and zone-failure tests must establish whether the availability target remains realistic.</p>
-<h2>9. Deep dive 2: Durable identity and revocation</h2>
+<h3>Durable identity and revocation</h3>
 <p>Route creates and disables to a leader with synchronous cross-zone quorum commits. Cache fills use authoritative reads, not lagging replicas. The uniqueness constraint and request record commit together, so a lost response can be retried without making another link. Ownership comes from the authenticated principal, never a supplied owner field. Disabling emits invalidations as an optimization; the five-second freshness bound handles lost events. On unavailable authority, expired entries fail closed with 503. Store backups separately; tombstone retention incurs permanent metadata cost.</p>
-<h2>10. Check the design</h2>
-<p>NFR1–2 → dive 1; NFR3–4 → dive 2. Test a dropped disable-invalidation event followed by leader failure: no redirect may succeed after the five-second boundary, and retrying an acknowledged create must return its original alias.</p>
+<h3>Check the design</h3>
+<p>NFR1–2 map to fast redirects during failures; NFR3–4 map to durable identity and revocation. Test a dropped disable-invalidation event followed by leader failure: no redirect may succeed after the five-second boundary, and retrying an acknowledged create must return its original alias.</p>
 <p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a> · <a href="../Design-URL-Shortener/01-introduction-requirements.html">Longer URL-shortener foundation</a></p>

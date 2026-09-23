@@ -11,6 +11,8 @@ topics: ["Low-Level Design", "API Design", "Interfaces", "Abstraction", "SOLID",
 
 > Self-contained. This article is about the stage most candidates skip and later regret: defining the method signatures and interfaces that give your design a *spine* before you start filling in bodies.
 
+**Stage-focused coaching, not a separate design framework:** after agreeing on requirements and core entities, use this for [3. API or system interface](interview-template.html#api). Carry the contracts into object collaboration in [4. High-level design](interview-template.html#high-level-design), and test their failure behavior in [5. Deep dives](interview-template.html#deep-dives). An LLD interface can be a method contract; it need not be an HTTP API.
+
 A common LLD failure looks like this: the candidate has a nice box-and-line class diagram, but when asked "so how does a client actually park a car?" they fumble, because they never defined the entry points. Their design has anatomy but no spine — nothing that says "this is what the system *does*." Defining the API first fixes this. It anchors every later decision, gives the interviewer something concrete to push on, and makes your objects' purpose obvious.
 
 ---
@@ -22,7 +24,7 @@ A common LLD failure looks like this: the candidate has a nice box-and-line clas
 1. **The public API** — the handful of methods the outside world calls to use your system. `parkVehicle(v)`, `placeOrder(cart)`, `allow(key)`. This is your system's *purpose*, expressed as verbs.
 2. **The polymorphic seams** — the internal interfaces where behavior varies and you want it swappable. `FareStrategy`, `Channel`, `EvictionPolicy`. This is where extensibility lives.
 
-Define the public API first (it anchors the whole design), then the seams (they anchor the follow-ups). Everything else is implementation you can fill in during the flow stage.
+Within this stage, define the public API first (it anchors the whole design), then the seams (they anchor the follow-ups). Fill in their collaboration and working core flow during High-level design.
 
 ---
 
@@ -164,7 +166,7 @@ Now the public API is narrow and intention-revealing: callers ask one question, 
 
 ## Why the spine pays off
 
-- **The happy-path stage gets easy.** With signatures defined, the flow is just calling the methods you already declared — you're not inventing them under pressure.
+- **High-level design gets concrete.** With signatures defined, the core flow is just calling the methods you already declared — you're not inventing them under pressure.
 - **Follow-ups become one-liners.** Every "what if X changes?" maps to "new implementation of interface Y."
 - **The interviewer sees intent.** An API says *what the system is for* far more clearly than a class diagram does.
 

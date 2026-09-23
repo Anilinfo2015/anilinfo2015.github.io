@@ -2,6 +2,8 @@
 
 These 10 questions are widely considered the fundamental building blocks of system design interviews. They cover roughly 90% of the concepts used in modern distributed systems. If you master the deep principles behind these, you can mix and match their components to solve almost any other system design problem.
 
+Use the [shared delivery framework](../system-design/interview-template.html) for each prompt: requirements → core entities → API or system interface → high-level design → deep dives, with an optional data-flow sketch for pipelines. This catalog supplies choices for the design and deep-dive stages, not a requirement to draw every pattern. The [question catalog](../interview-guide.html) links to full worked answers in that order.
+
 ---
 
 ## Essential System Design Patterns Catalog

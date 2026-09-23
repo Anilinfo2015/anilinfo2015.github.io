@@ -14,13 +14,20 @@ tags: [system-design, web-crawler, distributed-systems, crawling]
 ## Introduction
 A web crawler is a backend system that continuously discovers URLs, fetches content from the public web, extracts useful signals (text, metadata, links), and pushes the processed data into storage and a search index.
 
+> **Reader path:** [1. Requirements](../interview-questions/web-crawler.html#requirements) → [2. Core entities](../interview-questions/web-crawler.html#core-entities) → [3. API or system interface](../interview-questions/web-crawler.html#api) → [4. High-level design](../interview-questions/web-crawler.html#high-level-design) → [5. Deep dives](../interview-questions/web-crawler.html#deep-dives) · [HLD template](../interview-template.html). The concise answer is a separate scoped walkthrough; assumptions and contracts may differ.
+>
+> **Series:** foundations here → [scale analysis](02-scale-analysis.md) → frontier alternatives → security → production readiness, all as stage-5 expansions. Data flow is an optional, unnumbered view of the crawl pipeline.
+
 This series walks through a realistic, interview-style design grounded in our specs:
 - Requirements and capacity targets come from the requirements and scale assumptions.
 - Entities and sharding come from the data model and sharding plan.
 - API examples come from the API contract.
 - Queue/frontier decisions come from the URL frontier and queue/backpressure strategy.
 
-## Requirements (functional + non-goals)
+<a id="requirements-functional--non-goals"></a>
+## 1. Requirements
+
+### Functional requirements
 Based on the requirements and scale assumptions, the “must-have” capabilities are:
 - URL discovery (follow links) and URL scheduling (recrawl)
 - Content fetching (HTTP/1.1 + HTTP/2, compression, redirects)
@@ -29,13 +36,8 @@ Based on the requirements and scale assumptions, the “must-have” capabilitie
 - Index management (store, update, remove)
 - Monitoring/observability (crawl rate, errors, health)
 
-Out of scope / explicitly not implemented (from the non-goals):
-- Search ranking (e.g., PageRank)
-- User-facing search UI
-- Broad end-user authz/authn model (this is primarily internal)
-- Crawling private/authenticated content beyond basic cases
-
-## Quality targets (latency, availability, scale)
+<a id="quality-targets-latency-availability-scale"></a>
+### Non-functional requirements
 Based on the quality targets and SLO-style goals:
 - Crawl success rate: 95–98%
 - Index freshness: 90% of content < 7 days old
@@ -48,21 +50,20 @@ From the monitoring and observability plan (more detailed latency/traffic breakd
 - Crawl spikes: up to 5× (peak 500K URLs/sec)
 - Crawl latency budget example: DNS (10–50ms) + TCP/TLS + request + parse + dedup + index
 
-## Capacity estimation (copy + adapt)
+#### Capacity targets
 Based on the capacity targets:
 - Peak throughput target: 100,000 URLs/sec
 - 10B URLs indexed (minimum target)
 
-Rough crawl-rate math (based on the throughput target):
-- 100K URLs/sec × 86,400 sec/day ≈ 8.64B URL fetch “slots” per day
-- Many fetches are recrawls, retries, and filtered URLs; the spec targets ~10B unique URLs indexed/month
+### Scope
+Out of scope / explicitly not implemented (from the non-goals):
+- Search ranking (e.g., PageRank)
+- User-facing search UI
+- Broad end-user authz/authn model (this is primarily internal)
+- Crawling private/authenticated content beyond basic cases
 
-Storage sizing (based on average page size and retention assumptions):
-- Average compressed page: ~50KB
-- 10B pages × 50KB ≈ 500TB/month of compressed raw HTML
-- With 3× replication: 18PB/year equivalent durability footprint
-
-## Core entities + data model
+<a id="core-entities--data-model"></a>
+## 2. Core entities
 From the data model and sharding plan (names shortened for readability):
 
 1) `urls`
@@ -87,11 +88,54 @@ From the data model and sharding plan (names shortened for readability):
 7) `crawler_nodes`
 - Operational state: heartbeat, capacity, health.
 
-Sharding strategy (from the storage design):
-- Metadata shards by domain hash: `hash(domain) % 10`
-- Goal: keep a domain’s URL state on the same shard for locality and simpler scheduling
+### Minimal data model (ERD)
+This ERD is intentionally minimal and highlights the entities that dominate correctness and throughput.
+```mermaid
+erDiagram
+	URL ||--|| PAGE_CONTENT : has
+	URL ||--o{ LINK : emits
+	DOMAIN_CONFIG ||--o{ URL : governs
+	CONTENT_HASH ||--o{ URL : dedups
 
-## API surface + 2–3 JSON examples
+	URL {
+		bigint id
+		string url
+		string domain
+		string status
+		datetime last_crawled_at
+		datetime next_crawl_at
+		string content_hash
+	}
+
+	PAGE_CONTENT {
+		bigint url_id
+		string title
+		string language
+		datetime publish_date
+	}
+
+	LINK {
+		bigint source_url_id
+		string target_url
+		string anchor_text
+	}
+
+	DOMAIN_CONFIG {
+		string domain
+		int crawl_delay_ms
+		bool blocked
+	}
+
+	CONTENT_HASH {
+		string hash
+		bigint first_seen_url_id
+		datetime first_seen_at
+	}
+```
+*Figure 4: Minimal entity model for URL state, content, and dedup.*
+
+<a id="api-surface--23-json-examples"></a>
+## 3. API or system interface
 The crawler is primarily controlled via internal APIs (see the API contract). The most important interactions are:
 
 ### Example 1: Dequeue (crawler asks for work)
@@ -193,8 +237,41 @@ Response example:
 
 (We’ll go deeper on “write path vs read path” in Part 2 when we analyze scale bottlenecks.)
 
-## Basic HLD (default approach)
-We’ll use the architecture’s default “distributed frontier + distributed crawlers” approach.
+### API touchpoints
+These are the highest-volume control-plane interactions between crawlers and the system.
+```mermaid
+flowchart TD
+	crawler["Crawler Node"] -->|"GET /crawler/dequeue"| dequeue_api["Dequeue API"]
+	dequeue_api --> frontier["URL Frontier"]
+
+	crawler -->|"POST /crawler/report"| report_api["Report API"]
+	report_api --> metadata_svc["Metadata Service"]
+	metadata_svc --> metadata_db["PostgreSQL"]
+
+	report_api --> indexer["Index Worker"]
+	indexer --> search_index["Elasticsearch"]
+```
+*Figure 5: Primary API touchpoints for dequeue and report.*
+
+<a id="functional-flow-end-to-end"></a>
+## Data flow
+This is the end-to-end path from discovery to indexing.
+```mermaid
+flowchart LR
+	seeds["Seed URLs"] --> discovery["URL Discovery"]
+	discovery --> frontier["URL Frontier"]
+	frontier --> crawlers["Crawler Nodes"]
+	crawlers --> fetch["Fetch Content"]
+	fetch --> parse["Parse and Extract"]
+	parse --> dedup["Dedup Check"]
+	dedup --> store["Store Metadata and Raw HTML"]
+	store --> index["Index for Search"]
+```
+*Figure 2: End-to-end crawl and index flow.*
+
+<a id="basic-hld-default-approach"></a>
+## 4. High-level design
+We’ll use the architecture’s default “distributed frontier + distributed crawlers” approach. First follow a URL through the working pipeline; partitioning, capacity decisions, and failure trade-offs follow in stage 5.
 
 ### System context
 This diagram orients you to the system boundaries and major dependencies.
@@ -232,21 +309,6 @@ flowchart TD
 ```
 *Figure 1: System context and major dependencies.*
 
-### Functional flow (end-to-end)
-This is the end-to-end path from discovery to indexing.
-```mermaid
-flowchart LR
-	seeds["Seed URLs"] --> discovery["URL Discovery"]
-	discovery --> frontier["URL Frontier"]
-	frontier --> crawlers["Crawler Nodes"]
-	crawlers --> fetch["Fetch Content"]
-	fetch --> parse["Parse and Extract"]
-	parse --> dedup["Dedup Check"]
-	dedup --> store["Store Metadata and Raw HTML"]
-	store --> index["Index for Search"]
-```
-*Figure 2: End-to-end crawl and index flow.*
-
 ### Core components (HLD)
 This view emphasizes the core pipeline components and how they compose.
 ```mermaid
@@ -260,68 +322,6 @@ flowchart TB
 	indexer --> search["Search Index"]
 ```
 *Figure 3: Core components in the write pipeline.*
-
-### Minimal data model (ERD)
-This ERD is intentionally minimal and highlights the entities that dominate correctness and throughput.
-```mermaid
-erDiagram
-	URL ||--|| PAGE_CONTENT : has
-	URL ||--o{ LINK : emits
-	DOMAIN_CONFIG ||--o{ URL : governs
-	CONTENT_HASH ||--o{ URL : dedups
-
-	URL {
-		bigint id
-		string url
-		string domain
-		string status
-		datetime last_crawled_at
-		datetime next_crawl_at
-		string content_hash
-	}
-
-	PAGE_CONTENT {
-		bigint url_id
-		string title
-		string language
-		datetime publish_date
-	}
-
-	LINK {
-		bigint source_url_id
-		string target_url
-		string anchor_text
-	}
-
-	DOMAIN_CONFIG {
-		string domain
-		int crawl_delay_ms
-		bool blocked
-	}
-
-	CONTENT_HASH {
-		string hash
-		bigint first_seen_url_id
-		datetime first_seen_at
-	}
-```
-*Figure 4: Minimal entity model for URL state, content, and dedup.*
-
-### API touchpoints
-These are the highest-volume control-plane interactions between crawlers and the system.
-```mermaid
-flowchart TD
-	crawler["Crawler Node"] -->|"GET /crawler/dequeue"| dequeue_api["Dequeue API"]
-	dequeue_api --> frontier["URL Frontier"]
-
-	crawler -->|"POST /crawler/report"| report_api["Report API"]
-	report_api --> metadata_svc["Metadata Service"]
-	metadata_svc --> metadata_db["PostgreSQL"]
-
-	report_api --> indexer["Index Worker"]
-	indexer --> search_index["Elasticsearch"]
-```
-*Figure 5: Primary API touchpoints for dequeue and report.*
 
 ### Storage triangle (write targets)
 A single crawl typically produces writes to three independent backends.
@@ -340,6 +340,28 @@ At a high level:
 4. Metadata is stored in the metadata DB; raw HTML goes to tiered object storage.
 5. Extracted text + metadata are indexed for search.
 
-Next: Part 2 covers what breaks at 100K URLs/sec and how we scale each component.
+## 5. Deep dives
+
+<a id="capacity-estimation-copy--adapt"></a>
+### Capacity estimates for throughput and storage
+
+Use these estimates to evaluate frontier partitioning and raw-content storage tiers in the [scale analysis](02-scale-analysis.md), rather than as a separate sizing stage.
+
+Rough crawl-rate math (based on the throughput target):
+- 100K URLs/sec × 86,400 sec/day ≈ 8.64B URL fetch “slots” per day
+- Many fetches are recrawls, retries, and filtered URLs; the spec targets ~10B unique URLs indexed/month
+
+Storage sizing (based on average page size and retention assumptions):
+- Average compressed page: ~50KB
+- 10B pages × 50KB ≈ 500TB/month of compressed raw HTML
+- With 3× replication: 18PB/year equivalent durability footprint
+
+### Metadata locality
+
+Sharding strategy (from the storage design):
+- Metadata shards by domain hash: `hash(domain) % 10`
+- Goal: keep a domain’s URL state on the same shard for locality and simpler scheduling
+
+Next: [Part 2](02-scale-analysis.md) covers what breaks at 100K URLs/sec and how we scale each component.
 
 ---
