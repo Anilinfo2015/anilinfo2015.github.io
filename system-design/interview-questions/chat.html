@@ -1,0 +1,42 @@
+---
+title: "Chat: an interview design"
+description: "Ordered conversation logs, reconnect recovery, and membership-bound delivery."
+---
+<h1>Chat</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> create member-scoped conversations; send text messages; receive live messages and retrieve missed history.</p>
+<ol>
+  <li><strong>NFR1:</strong> assume one million connections and 20,000 peak messages/second, targeting same-region online delivery p95 below 200 ms.</li>
+  <li><strong>NFR2:</strong> preserve one committed order per conversation and one stored message per sender/clientMessageId; delivery may repeat.</li>
+  <li><strong>NFR3:</strong> lose no acknowledged message through one zone failure.</li>
+  <li><strong>NFR4:</strong> permit only current members to send/read and stop removed members receiving new server-delivered content within five seconds.</li>
+</ol>
+<h2>2. Out of scope</h2>
+<p>Calls, media attachments, end-to-end encryption, read receipts, and giant broadcast channels are excluded. Limit groups to 100 members. Previously downloaded messages cannot be recalled.</p>
+<h2>3. Core entities</h2>
+<p><code>Conversation(conversationId, nextSequence)</code>, <code>Membership(conversationId, userId, role)</code>, and <code>Message(conversationId, sequence)</code> are authoritative. Messages include senderId, clientMessageId, and text. A unique sender/clientMessageId key within the conversation prevents duplicate storage. <code>Session(userId, deviceId)</code> tracks ephemeral socket routing, not message durability.</p>
+<h2>4. API</h2>
+<p><code>POST /conversations {members}</code> uses Idempotency-Key and returns 201 with conversationId. <code>POST /conversations/{id}/messages {clientMessageId, text}</code> returns committed sequence; identical retries return that sequence and changed text returns 409. Invalid size returns 422. <code>GET /conversations/{id}/messages?afterSequence&amp;limit</code> returns up to 100 ordered messages and a next cursor. WebSocket subscribe accepts conversationId and lastSeenSequence after authentication. All operations check membership; inaccessible conversations return 404. <code>DELETE /conversations/{id}/members/{userId}</code> requires group-admin authority and is idempotent. Unavailable ordering authority returns 503, not a success receipt.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> ChatServer
+    ChatServer --> ConversationDatabase
+    ChatServer --> ConnectedRecipients
+</pre>
+<ol>
+  <li>Create the conversation and memberships transactionally.</li>
+  <li>Check membership, allocate a sequence, insert the message, and acknowledge commit.</li>
+  <li>Push committed messages to sockets; reconnecting clients fetch history after their last contiguous sequence.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>One server makes routing easy but cannot hold every socket or survive failure. Separate connection gateways from conversation owners. Global ordering would serialize unrelated chats; per-conversation ordering is sufficient. Push accelerates delivery, while the durable log remains the recovery mechanism when gateways lose messages.</p>
+<h2>7. Scale estimate</h2>
+<p>At an assumed 20 KB of connection state, one million sockets need 20 GB across gateways before buffers and runtime overhead. With 10,000 connections/gateway, start capacity testing near 100 gateways plus failover headroom. Assume 5,000 average messages/second at 1 KB: 432 GB/day raw, or 1.296 TB/day for three copies before indexes. Set history retention explicitly instead of keeping all data in memory.</p>
+<h2>8. Deep dive 1: Routing and bounded delivery</h2>
+<p>Route conversation commands by conversationId hash; route sockets by userId and deviceId through a shared presence directory. Fan-out workers consume committed message events and forward to currently connected devices. A stale directory entry causes a missed push, not lost history. Clients buffer out-of-order sequences briefly and request gaps; they deduplicate by conversation and sequence. Limit socket output queues and disconnect slow consumers with a reconnect cursor rather than growing memory indefinitely. Heartbeats spread across time avoid synchronized traffic spikes. Partition work across conversations; the 100-member cap limits any single message's fan-out.</p>
+<h2>9. Deep dive 2: Commit, retry, and membership boundaries</h2>
+<p>A quorum-replicated conversation partition serializes membership changes and message appends. Allocate sequence, persist deduplication information, and record an outbox event in one transaction before acknowledgement. Leader fencing prevents two owners assigning conflicting sequences. History and send authorization use current membership. Gateways obtain membership leases lasting at most five seconds from the start of an authoritative check; delivery stops when leases expire unless renewed. Removal events close sockets promptly, while expiry handles missed invalidations. During quorum or authorization outages, reject writes and stop expired subscriptions. Retain deduplication identities for the supported message-history lifetime, with matching retry limits documented.</p>
+<h2>10. Check the design</h2>
+<p>NFR1 → dive 1; NFR2 → both; NFR3–4 → dive 2. Kill the owner after commit but before acknowledgement: retry returns the same sequence, reconnect yields no gaps, and removed members receive nothing beyond the five-second lease window.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

@@ -1,0 +1,40 @@
+---
+title: "Design a payment system"
+description: "Idempotent payment commands, balanced ledger entries, and reconciliation."
+---
+<h1>Design a payment system</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> create and capture a payment; refund a captured payment; retrieve payment and refund status. Assume one currency per payment and a processor that supports merchant-scoped idempotency keys.</p>
+<p><strong>Non-functional assumptions:</strong> N1: command acceptance p99 below 300 ms, excluding processor completion. N2: sustain 2,000 commands/s peak. N3: zero unbalanced ledger transactions or internally accepted over-refunds. N4: lose zero acknowledged commands after one storage-node failure and reconcile unknown processor outcomes within 15 minutes while its query API is healthy.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude card vaulting, foreign exchange, lending, fraud-model design, and settlement banking. Store processor tokens, never raw card details.</p>
+<h2>3. Core entities</h2>
+<p>Payment uses (merchant ID, payment ID), with amount in integer minor units and currency. Refund references a payment. Command is unique by (merchant, idempotency key). LedgerTransaction owns entries keyed by (transaction ID, line number). Every posted transaction balances debits and credits within one currency; successful plus reserved refunds never exceed captured value.</p>
+<h2>4. API</h2>
+<p><code>POST /payments</code> accepts amount, currency, processor token, and idempotency key; returns 202 with payment ID and pending status. <code>POST /payments/{id}/refunds</code> accepts amount and a new key, returning refund ID. Merchant credentials must own the payment; refund permission is separate. Invalid amounts return 400, changed payloads under an existing key or excess refunds 409, throttling 429. Retry uncertain submissions with the same key; retained command records preserve the original response. <code>GET /payments/{id}</code> returns state, captured/refunded amounts, and cursor-paginated refunds.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Merchant --> API
+    API --> Database
+    Worker --> Database
+    Worker --> Processor
+    Processor --> Webhook
+    Webhook --> Database
+</pre>
+<ol>
+<li>Validate the merchant and save a payment command with an outbox entry in one transaction.</li>
+<li>A worker submits capture or refund with the command's stable processor key.</li>
+<li>Apply verified processor results transactionally to payment state and balanced ledger entries; status reads use these records.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>A single SQL ledger simplifies balance checks and investigation. Direct synchronous processor calls avoid a queue but cannot atomically commit local state with an external charge. Durable asynchronous commands make that uncertainty explicit; users must tolerate pending states.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume 200 commands/s average, tenfold peak, and four 200-byte ledger entries per completed command. The upper-bound raw entry rate is 160 KB/s average, or 13.8 GB/day. Three replicas need about 41.5 GB/day before indexes. Retain immutable history in partitioned storage; shard active processing rather than repeatedly scanning the full ledger.</p>
+<h2>8. Deep dive 1: Local transaction boundaries</h2>
+<p>N1–N3 use merchant-hash shards, keeping payment commands, refund reservations, and ledger entries together. Acceptance commits only local work; processor calls run outside locks. Lock the payment row to reserve refundable value before enqueueing; concurrent refunds therefore cannot both spend it. Release reservations only after definitive failure. A posting procedure validates equal debit and credit sums and uses a unique external-operation ID. Worker crashes replay commands, but unique command/posting constraints suppress repeated local effects. Very large merchants need dedicated shards; splitting their ledger requires a new transaction boundary.</p>
+<h2>9. Deep dive 2: Resolving uncertainty</h2>
+<p>N4 requires quorum commits before acknowledgment and a transactional outbox on each merchant shard. A timeout moves the operation to unknown, not failed. Query the processor using the stable operation reference; retry only within its documented idempotency retention window. Beyond that window, quarantine for reconciliation rather than risk another charge. Partition reconciliation scans by merchant shard and next-check time, using leased batches and jittered retries. Signed webhooks and polling enter the same deduplicating state machine. Reconcile processor statements against ledger postings; record corrections as new balanced transactions, never edits.</p>
+<h2>10. Check the design</h2>
+<p>N1–N3 map to dive 1; N4 maps to dive 2. Kill a worker after processor capture but before local commit: status should become unknown then captured through reconciliation, with one local posting and no second capture.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

@@ -1,7 +1,7 @@
 # Configuration for index.html generation
 # Content writers can specify which articles appear in featured sections
 # 
-# Use the relative path to the markdown file from the repository root.
+# Use the relative path to a Markdown or Jekyll HTML article from the repository root.
 # Example: architecture-patterns/microservices.md
 #
 # If a file path is invalid or the file doesn't exist, it will be skipped.

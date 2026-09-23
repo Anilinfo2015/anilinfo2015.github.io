@@ -1,0 +1,40 @@
+---
+title: "Design search autocomplete"
+description: "Prefix suggestions with bounded ranking work and versioned index publication."
+---
+<h1>Design search autocomplete</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> return ranked suggestions for a typed prefix; record selected suggestions to influence popularity; remove prohibited suggestions. Assume public suggestions grouped by language and region, not personalized histories.</p>
+<p><strong>Non-functional assumptions:</strong> N1: suggestion p99 below 50 ms server-side. N2: serve 50,000 requests/s peak over 20 million normalized phrases. N3: incorporate popularity updates within five minutes and enforce removals within 60 seconds.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude typo correction, full search results, private content, and per-user ranking. Prefix matching begins at two normalized characters.</p>
+<h2>3. Core entities</h2>
+<p>Phrase uses (locale, phrase ID), with display text, normalized text, score, and moderation version. SelectionEvent has event ID, locale, and phrase ID. Snapshot uses (locale, generation). Removal uses (locale, phrase ID) and monotonic version. Older snapshots or events cannot resurrect a removal already applied by a serving node.</p>
+<h2>4. API</h2>
+<p><code>GET /suggest?prefix=&amp;locale=&amp;limit=</code> returns up to ten phrase IDs and labels plus generation; no pagination is needed. Reject invalid locale or overlong prefixes with 400 and overload with 429. Anonymous callers receive scoped client tokens and quotas; administrative APIs require moderator roles. <code>POST /selections</code> accepts event ID, locale, and phrase ID, returning 202; same-ID retries deduplicate within seven days. <code>DELETE /locales/{locale}/phrases/{id}</code> returns a removal version and 202. Poll authorized moderation status for propagation; unknown IDs return 404. Read retries are safe.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> API
+    API --> PhraseDB
+    API --> EventTable
+    Aggregator --> EventTable
+    Aggregator --> PhraseDB
+    Moderator --> API
+</pre>
+<ol>
+<li>Normalize the prefix, select matching active phrases from a prefix index, and rank by score with phrase ID as a tie-breaker.</li>
+<li>Persist selection events; a periodic aggregator updates phrase scores.</li>
+<li>Mark moderated phrases removed; queries filter those rows before returning labels.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Indexed database queries keep freshness simple but sorting every popular prefix is expensive. Precomputed top suggestions bound read work at the cost of delayed popularity and rebuilding. Choose precomputation because keystroke traffic is much larger than phrase-update traffic.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume 10,000 requests/s average and fivefold peak. At 500 bytes per response, peak egress is 25 MB/s before protocol overhead. Twenty million phrase records at 100 bytes occupy 2 GB raw, but trie nodes and candidate lists add memory. Measure that multiplier before sizing replicas; cache popular prefixes and split by locale plus prefix range rather than assuming a single 2 GB index.</p>
+<h2>8. Deep dive 1: Bounded serving work</h2>
+<p>N1/N2 use immutable compact tries with a precomputed top-50 candidate list at each prefix node. Traverse normalized Unicode code points, then filter removals and return ten; returning fewer is acceptable after heavy filtering. Split large locales by two-character prefix, keeping each supported query on one partition. Replicate hot partitions and cache by locale, prefix, and generation. On replica failure, route to another copy of the same generation; shed excess requests rather than falling back to unbounded database sorts. Load-test hot prefixes, not only uniform traffic.</p>
+<h2>9. Deep dive 2: Freshness and moderation</h2>
+<p>N3 deduplicates events into per-phrase, five-minute-window counters, capping client contributions. Rebuild changed prefix partitions every minute with four minutes reserved for building and atomic manifest publication. Resume failed builds from committed offsets. Broadcast durable removal versions and invalidate affected caches; a final response filter also removes cached candidates. The ordered removal stream includes authority-issued timestamped barriers. Serve only after applying a barrier less than 60 seconds old, including every preceding removal. Fresh heartbeats without applied progress do not qualify; lagging replicas stop serving.</p>
+<h2>10. Check the design</h2>
+<p>N1/N2 map to dive 1; N3 maps to dive 2. Block removal application while heartbeats continue: the replica must stop serving at the applied-barrier deadline. Replaying an older snapshot must not restore the removed phrase.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

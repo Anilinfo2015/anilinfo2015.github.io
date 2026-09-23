@@ -1,0 +1,39 @@
+---
+title: "Design a job scheduler"
+description: "Durable schedules, leased execution, and honest retry semantics."
+---
+<h1>Design a job scheduler</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> create one-time or recurring jobs; cancel future executions; inspect execution status and retry failed runs. Recurrences use UTC and an explicit missed-run policy.</p>
+<p><strong>Non-functional assumptions:</strong> N1: 99% of runnable jobs start within five seconds of their due time under provisioned load. N2: maintain 10 million schedules and dispatch 20,000 runs/s peak. N3: lose zero acknowledged schedules after one storage-node failure, with at most one current lease per run and auditable at-least-once execution.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude workflow DAGs, arbitrary untrusted-code sandboxing, and local-time daylight-saving rules. Cancellation stops undispatched work; already-running side effects cannot necessarily be undone.</p>
+<h2>3. Core entities</h2>
+<p>Schedule uses (tenant, schedule ID), storing recurrence, nextDue, version, and cancellation flag. Run uses (schedule ID, scheduled time); Attempt adds an attempt number and lease epoch. The invariant is one logical run per scheduled occurrence, with monotonically increasing execution epochs. A lease is not proof that an expired worker stopped.</p>
+<h2>4. API</h2>
+<p><code>POST /schedules</code> accepts handler, payload reference, UTC time or recurrence, catch-up policy, and idempotency key; returns schedule ID. Tenant service credentials must authorize the handler. Invalid schedules return 400, capacity limits 429, and changed idempotent payloads 409. <code>DELETE /schedules/{id}</code> takes expected version and returns cancellation state or 409. <code>GET /schedules/{id}/runs?cursor=</code> returns owner-authorized paginated runs. <code>POST /runs/{id}/retry</code> requires a terminal failed run and idempotency key; it returns a new attempt or 409 if active. Repeat uncertain writes with the original key.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> API
+    API --> Database
+    Dispatcher --> Database
+    Dispatcher --> Worker
+    Worker --> Database
+</pre>
+<ol>
+<li>Store schedules and use an index on nextDue to find due work.</li>
+<li>In one transaction, create the unique run and advance the recurrence; workers claim runs with leases.</li>
+<li>Workers persist outcomes. Cancellation marks the schedule, and status or manual-retry requests operate on its runs.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Database polling is durable, but dispatchers compete on the due-time index. A memory-only timer wheel is faster but cannot be authoritative. Use durable rows plus disposable in-memory timing structures.</p>
+<h2>7. Scale estimate</h2>
+<p>Ten million schedules at 300 bytes occupy 3 GB raw before indexes. Assume 2,000 starts/s average and tenfold peak. With a five-second average runtime, Little's law implies roughly 10,000 average and 100,000 peak concurrent executions if that runtime persists. Worker concurrency and tenant admission limits matter more than schedule-row memory; an undersized worker pool cannot meet N1.</p>
+<h2>8. Deep dive 1: Finding due work</h2>
+<p>N1/N2 shard schedules by tenant and schedule hash, with a nextDue index per shard. Shard leaders load the next minute into timer wheels, dispatching second-sized buckets. Persist run creation before handing off work. After a leader crash, scan overdue rows and rebuild the wheel; uniqueness prevents duplicate logical runs. Advance recurrences from scheduled time, not completion time, to avoid drift. Coalesce missed occurrences by default; bounded catch-up is opt-in. Weighted tenant queues and admission control reserve worker slots, while oldest-runnable-age metrics reveal saturation.</p>
+<h2>9. Deep dive 2: Leases and side effects</h2>
+<p>N3 uses quorum-replicated schedule/run transactions on the schedule's shard. Conditional claims grant a lease and increasing epoch; heartbeats extend it using store time. Completion requires the current epoch. After expiry, backoff and retry with the same run ID but a new attempt. Pass run ID as the downstream idempotency key; compatible destinations also reject stale epochs. For destinations lacking either protection, duplicated external effects remain possible and require reconciliation. Serialize cancellation with run creation and recheck before claiming; cancellation racing an active attempt returns its in-flight status rather than promising rollback.</p>
+<h2>10. Check the design</h2>
+<p>N1/N2 map to dive 1; N3 maps to dive 2. Pause a worker beyond lease expiry, let a replacement claim the run, then resume it: stale completion must fail, and a cooperating destination must reject its stale effect.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

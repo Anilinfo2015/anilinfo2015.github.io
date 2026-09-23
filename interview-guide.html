@@ -1,0 +1,101 @@
+---
+title: "HLD and LLD interview questions"
+description: "A question catalog with concise designs, shared templates, and a coverage review."
+---
+<h1>HLD and LLD interview questions</h1>
+<p>Choose a question, read its requirements, and trace the main operation through the diagram. Each HLD article starts with a working baseline and adds two deep dives. Each LLD article specifies state ownership, method contracts, failure handling, and tests.</p>
+<p><a href="system-design/interview-template.html">HLD article template</a> · <a href="low-level-design/interview-template.html">LLD article template</a></p>
+
+<h2>Coverage review</h2>
+<p>The starting library had five HLD case-study subjects spread across 41 files, plus 19 LLD worked articles and 11 LLD technique guides. HLD lacked short, comparable answers for messaging, feeds, storage, payments, booking, search, and background processing. LLD covered many familiar questions but mixed interview dialogue, implementations, and production discussion; library lending, rentals, inventory, file systems, scheduling, and order matching were missing.</p>
+<p>This catalog brings those gaps into one structure: 24 HLD articles and 26 LLD articles. The longer HLD series remain available. The LLD walkthroughs use the shared template; the technique guides remain separate.</p>
+<p>These are common practice question families, not a frequency ranking or a claim to cover every employer’s question bank. Product names describe familiar prompts, not those companies’ actual implementations. Workload and latency figures are explicit interview assumptions.</p>
+
+<h2>HLD: links, content, and communication</h2>
+<table>
+<thead><tr><th>Question</th><th>Main design decision</th></tr></thead>
+<tbody>
+<tr><td><a href="system-design/interview-questions/url-shortener.html">URL shortener</a></td><td>Unique aliases and fast redirects</td></tr>
+<tr><td><a href="system-design/interview-questions/news-feed.html">News feed</a></td><td>Fan-out on write versus read</td></tr>
+<tr><td><a href="system-design/interview-questions/chat.html">Chat / WhatsApp</a></td><td>Message ordering and offline delivery</td></tr>
+<tr><td><a href="system-design/interview-questions/video-streaming.html">Video streaming / YouTube</a></td><td>Upload processing and playback bandwidth</td></tr>
+<tr><td><a href="system-design/interview-questions/file-storage.html">File storage / Dropbox</a></td><td>File versions and synchronization</td></tr>
+<tr><td><a href="system-design/interview-questions/collaborative-editor.html">Collaborative document editor</a></td><td>Concurrent edits and recovery</td></tr>
+<tr><td><a href="system-design/interview-questions/notification-service.html">Notification service</a></td><td>Retries and duplicate delivery</td></tr>
+<tr><td><a href="system-design/interview-questions/tag-management.html">Tag management</a></td><td>Tenant boundaries and inverted indexes</td></tr>
+</tbody>
+</table>
+
+<h2>HLD: transactions and location</h2>
+<table>
+<thead><tr><th>Question</th><th>Main design decision</th></tr></thead>
+<tbody>
+<tr><td><a href="system-design/interview-questions/ticket-booking.html">Ticket booking / Ticketmaster</a></td><td>Seat holds and payment races</td></tr>
+<tr><td><a href="system-design/interview-questions/payment-system.html">Payment system</a></td><td>Idempotency and reconciliation</td></tr>
+<tr><td><a href="system-design/interview-questions/ecommerce.html">E-commerce checkout</a></td><td>Inventory reservations and order state</td></tr>
+<tr><td><a href="system-design/interview-questions/ride-hailing.html">Ride hailing / Uber</a></td><td>Nearby candidates and exclusive assignment</td></tr>
+<tr><td><a href="system-design/interview-questions/food-delivery.html">Food delivery</a></td><td>Order coordination and courier dispatch</td></tr>
+<tr><td><a href="system-design/interview-questions/proximity-search.html">Nearby places / Yelp</a></td><td>Geospatial indexing and exact filtering</td></tr>
+</tbody>
+</table>
+
+<h2>HLD: infrastructure, search, and analytics</h2>
+<table>
+<thead><tr><th>Question</th><th>Main design decision</th></tr></thead>
+<tbody>
+<tr><td><a href="system-design/interview-questions/distributed-cache.html">Distributed cache</a></td><td>Partition ownership and hot keys</td></tr>
+<tr><td><a href="system-design/interview-questions/rate-limiter.html">Distributed rate limiter</a></td><td>Atomic budgets and outage policy</td></tr>
+<tr><td><a href="system-design/interview-questions/message-queue.html">Message queue</a></td><td>Durable acknowledgements and replay</td></tr>
+<tr><td><a href="system-design/interview-questions/job-scheduler.html">Job scheduler</a></td><td>Leases and duplicate execution</td></tr>
+<tr><td><a href="system-design/interview-questions/web-crawler.html">Web crawler</a></td><td>Frontier scheduling and politeness</td></tr>
+<tr><td><a href="system-design/interview-questions/search-engine.html">Search engine</a></td><td>Index construction and query scatter</td></tr>
+<tr><td><a href="system-design/interview-questions/search-autocomplete.html">Search autocomplete</a></td><td>Prefix ranking and refresh cost</td></tr>
+<tr><td><a href="system-design/interview-questions/top-k.html">Top-K / trending content</a></td><td>Windowed counts and approximation</td></tr>
+<tr><td><a href="system-design/interview-questions/ad-click-aggregation.html">Ad click aggregation</a></td><td>Deduplication and late events</td></tr>
+<tr><td><a href="system-design/interview-questions/metrics-monitoring.html">Metrics and monitoring</a></td><td>Series cardinality and retention</td></tr>
+</tbody>
+</table>
+
+<h2>LLD: objects, rules, and state machines</h2>
+<ul>
+<li><a href="low-level-design/parking-lot.html">Parking lot</a> — spot ownership and ticket lifecycle.</li>
+<li><a href="low-level-design/elevator-system.html">Elevator system</a> — request scheduling and safe transitions.</li>
+<li><a href="low-level-design/vending-machine.html">Vending machine</a> — inventory, credit, and dispensing.</li>
+<li><a href="low-level-design/atm-machine.html">ATM</a> — authorization and uncertain cash dispensing.</li>
+<li><a href="low-level-design/library-management.html">Library management</a> — copies, loans, and reservations.</li>
+<li><a href="low-level-design/hotel-booking.html">Hotel booking</a> — date ranges and room allocation.</li>
+<li><a href="low-level-design/car-rental.html">Car rental</a> — reservations and vehicle state.</li>
+<li><a href="low-level-design/tic-tac-toe-and-chess.html">Tic-tac-toe and chess</a> — turn rules and legal moves.</li>
+<li><a href="low-level-design/snake-and-ladder.html">Snakes and ladders</a> — board transitions and deterministic tests.</li>
+<li><a href="low-level-design/deck-of-cards-blackjack.html">Deck of cards and blackjack</a> — card ownership and scoring.</li>
+</ul>
+
+<h2>LLD: application workflows</h2>
+<ul>
+<li><a href="low-level-design/splitwise-expense-sharing.html">Expense sharing / Splitwise</a> — rounding and balance invariants.</li>
+<li><a href="low-level-design/movie-ticket-booking.html">Movie ticket booking</a> — seat holds and confirmation.</li>
+<li><a href="low-level-design/meeting-scheduler-calendar.html">Meeting scheduler</a> — interval conflicts and atomic allocation.</li>
+<li><a href="low-level-design/food-delivery.html">Food delivery</a> — order state transitions.</li>
+<li><a href="low-level-design/ride-hailing-uber.html">Ride hailing</a> — driver assignment.</li>
+<li><a href="low-level-design/inventory-management.html">Inventory management</a> — stock reservations and releases.</li>
+<li><a href="low-level-design/stock-exchange.html">Stock exchange</a> — price-time priority and partial fills.</li>
+</ul>
+
+<h2>LLD: reusable components</h2>
+<ul>
+<li><a href="low-level-design/lru-cache.html">LRU cache</a> — constant-time access and eviction.</li>
+<li><a href="low-level-design/in-memory-key-value-store.html">In-memory key-value store</a> — TTL and memory limits.</li>
+<li><a href="low-level-design/rate-limiter.html">Rate limiter</a> — token accounting.</li>
+<li><a href="low-level-design/notification-service.html">Notification service</a> — channel contracts and retry state.</li>
+<li><a href="low-level-design/logging-framework.html">Logging framework</a> — bounded buffering and shutdown.</li>
+<li><a href="low-level-design/pub-sub-message-queue.html">Pub-sub queue</a> — offsets and subscriber isolation.</li>
+<li><a href="low-level-design/text-editor-undo-redo.html">Text editor undo/redo</a> — reversible commands and history.</li>
+<li><a href="low-level-design/filesystem.html">In-memory file system</a> — tree ownership and path rules.</li>
+<li><a href="low-level-design/task-scheduler.html">Task scheduler</a> — deadlines, cancellation, and worker limits.</li>
+</ul>
+
+<h2>Longer studies and interview technique</h2>
+<p>The short HLD answers supplement the existing series on <a href="system-design/Design-URL-Shortener/01-introduction-requirements.html">URL shortening</a>, <a href="system-design/Design-Distributed-Cache/01-introduction-and-requirements.html">distributed caching</a>, <a href="system-design/Design-Web-Crawler/01-foundations.html">web crawling</a>, <a href="system-design/design-youtube/01-foundations.html">YouTube</a>, and <a href="system-design/Design-Tag-Management-Service/01-requirements-and-domain.html">tag management</a>.</p>
+<p>The separate <a href="low-level-design/00-the-45-minute-lld-framework.html">LLD interview playbook</a> covers interview technique. Its coaching format is different from the worked answers here.</p>
+<h2>Reference frameworks</h2>
+<p>The templates use Hello Interview’s public <a href="https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery">HLD delivery framework</a> and <a href="https://www.hellointerview.com/learn/low-level-design/in-a-hurry/delivery">LLD delivery framework</a> as structural references. The articles are original, scoped solutions. No public source establishes a complete list of frequently asked questions.</p>

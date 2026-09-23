@@ -1,0 +1,42 @@
+---
+title: "LLD Walkthrough: Stock Exchange Order Book"
+description: "Price-time matching, reserved balances, partial fills, and deterministic cancellation."
+---
+<h1>Stock Exchange Order Book</h1>
+
+<h2>1. Requirements</h2>
+<p>Accept buy and sell limit orders for one instrument, match by price then arrival order, support partial fills, and cancel open remainders. One event-loop thread owns all state; concurrent callers submit serialized commands. Prices are positive integer minor units per whole share. Quantities are positive whole shares. Cap accounts, open orders, and retained command IDs; reject new commands when configured capacity is exhausted.</p>
+
+<h2>2. Out of scope</h2>
+<p>Exclude market orders, short selling, margin, fees, auctions, networking, and durable settlement. Accounts begin with supplied cash and shares; deposits and withdrawals are excluded. Self-trade prevention is not included, so matching orders from one account may trade. This is not a production exchange.</p>
+
+<h2>3. Model and invariants</h2>
+<p><code>Exchange</code> owns account balances, order lookup, deduplication records, and the book. <code>OrderBook</code> has sorted bid and ask price maps whose levels contain FIFO queues. Each <code>Order</code> owns account, side, limit, original quantity, remaining quantity, and sequence.</p>
+<pre class="mermaid">
+classDiagram
+    class Exchange
+    class OrderBook
+    class Order
+    class Account
+    Exchange *-- OrderBook
+    Exchange *-- Account
+    OrderBook o-- Order
+</pre>
+<p>Available balances never become negative. Buy orders reserve limit × remaining shares in cash; sells reserve remaining shares. Filled quantity plus remaining quantity equals original quantity until cancellation closes the remainder. Matching conserves total cash and total shares.</p>
+
+<h2>4. Public contract</h2>
+<p><code>submit(accountId, side, limit, quantity, commandId) → OrderResult</code> returns fills and remaining quantity, or <code>NotFound</code>, <code>InvalidOrder</code>, <code>InsufficientBalance</code>, <code>CapacityExceeded</code>, or <code>KeyConflict</code>. <code>cancel(accountId, orderId, commandId) → CancelResult</code> returns released reserves or <code>NotFound</code>, <code>Forbidden</code>, <code>ClosedOrder</code>, <code>CapacityExceeded</code>, or <code>KeyConflict</code>. Identical retained command IDs and payloads return the original result. <code>depth(levels) → Snapshot</code> accepts 1–100 levels, otherwise <code>InvalidDepth</code>.</p>
+
+<h2>5. Core flow</h2>
+<p>Validate bounds and checked arithmetic, reserve the incoming order's cash or shares, and assign its arrival sequence. A buy crosses while best ask ≤ limit; a sell crosses while best bid ≥ limit. Select the oldest order at the best opposite price. Fill the smaller remaining quantity at the resting order's price.</p>
+<p>For each fill, reduce the buyer's reserved cash by buyerLimit × fillQuantity, credit price improvement to available cash, credit shares to the buyer, and transfer trade cash to the seller while consuming its reserved shares. Aggregate account deltas before applying them, including self-trades. Remove exhausted resting orders; continue until the incoming order finishes or no price crosses. Append any remainder to its own price queue. Cancellation unlinks only the remaining order and releases its reserves.</p>
+
+<h2>6. Trade-offs and extensions</h2>
+<p>Sorted price maps give O(log P) level lookup with O(1) FIFO removal using indexed linked nodes. Matching work grows with the number of fills. Adding an instrument requires an explicit decision about account ownership across books, not just another queue.</p>
+
+<h2>7. Concurrency and failure handling</h2>
+<p>Each command builds and validates a mutation batch before publishing balances, book changes, and its cached result together. No callbacks run in the event loop. Duplicate submissions cannot reserve twice while IDs remain retained. The baseline loses all state on process failure and must not advertise durable orders; replay recovery would require a journal before acknowledgement.</p>
+
+<h2>8. Test cases</h2>
+<p>Two asks at 100 fill in arrival order. A buy for three shares at 110 against two shares at 100 spends 200, releases 20 price improvement, and retains 110 reserved. Cancelling releases that 110. Insufficient cash leaves the book unchanged. Duplicate command IDs create no second fill. Reaching the open-order cap rejects before reserving funds. Assert conserved cash and shares after every partial fill.</p>
+<p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

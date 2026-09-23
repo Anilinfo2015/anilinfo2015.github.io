@@ -1,0 +1,38 @@
+---
+title: "Design an ecommerce system"
+description: "Product browsing, inventory reservations, and recoverable checkout."
+---
+<h1>Design an ecommerce system</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> browse products and displayed availability; place an order with payment; cancel an unpaid order. An order may contain several SKUs from one fulfillment warehouse.</p>
+<p><strong>Non-functional assumptions:</strong> N1: browse p95 below 150 ms and checkout acceptance p95 below 500 ms, excluding payment completion. N2: handle 10,000 browse requests/s and 1,000 checkouts/s peak. N3: accept zero inventory oversells and lose zero acknowledged orders after one database-node failure.</p>
+<h2>2. Out of scope</h2>
+<p>Exclude recommendations, shipping optimization, settlement, returns, and multi-warehouse fulfillment. External payments support idempotent authorization, capture, and status queries.</p>
+<h2>3. Core entities</h2>
+<p>Product uses SKU, with versioned price. Inventory uses (warehouse, SKU), with onHand and reserved. Order uses (warehouse, order ID), storing buyer and immutable line prices. Reservation uses (order ID, SKU); PaymentAttempt uses order ID and attempt ID. Available stock equals onHand minus reserved and must never be negative.</p>
+<h2>4. API</h2>
+<p><code>GET /products?cursor=</code> returns product cards, price versions, and advisory stock. <code>POST /orders</code> accepts SKU quantities, expected price versions, warehouse, payment token, and idempotency key; returns 202 with pending order ID. Price or stock conflicts return 409, invalid quantities 400, admission limits 429. Authenticated buyers may act only on their own orders. Same-key retries return the original order; changed inputs return 409. <code>GET /orders/{id}</code> returns current state. <code>POST /orders/{id}/cancel</code> returns cancellation state or 409 once payment finalization prevents immediate cancellation; retry with the same key.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Buyer --> API
+    API --> Database
+    Worker --> Database
+    Worker --> PaymentProvider
+</pre>
+<ol>
+<li>Serve catalog pages from product records with advisory availability.</li>
+<li>In a database transaction, validate prices, reserve all order lines, and create the pending order plus payment outbox entry.</li>
+<li>A worker obtains payment authorization and finalizes the order. Cancellation releases reservations only when payment state permits; buyers read persisted status.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Database transactions make multi-line reservations atomic, but popular SKUs cause contention. Cached inventory speeds browsing, not allocation. Delayed stock checks risk overselling; choose authoritative reservations even when hot items must reject demand.</p>
+<h2>7. Scale estimate</h2>
+<p>Three lines per checkout at 1,000 peak checkouts/s require 3,000 reservation mutations/s, plus finalization and order writes. At 100 checkouts/s average and 2 KB per order, history grows 17.28 GB raw/day before indexes and replicas. Browse traffic is ten times checkout traffic at peak: separate cached reads from reservations and archive old orders.</p>
+<h2>8. Deep dive 1: Read scale and checkout admission</h2>
+<p>N1/N2 cache product pages by catalog version and paginate with signed cursors. Stock badges are explicitly stale; checkout always revalidates. Partition checkout data by warehouse, keeping all allowed order lines in one transaction. Lock SKU rows in sorted order to reduce deadlocks, then atomically test available quantities and increment reservations. Put hard concurrency limits on hot warehouse/SKU boundaries; retry serialization conflicts briefly, then return 409 or 429. Rebuild caches after failure from product records, not payment traffic. Benchmark skewed flash-sale demand rather than assuming evenly distributed SKUs.</p>
+<h2>9. Deep dive 2: Inventory and payment recovery</h2>
+<p>N3 requires quorum order/reservation commits and a same-transaction outbox. Workers authorize payment with stable order keys. Before capture, atomically move the order into finalizing, blocking reservation expiry and cancellation. Capture success decrements onHand and reserved together; definitive failure releases reserved stock. Unknown processor outcomes remain finalizing until status reconciliation, never releasing stock merely because a timeout elapsed. Expiry releases only pending orders through a conditional transition; any late authorization is voided. Replayed outbox work consults persisted state and processor idempotency keys. A stuck unknown payment ties up stock, an intentional cost of avoiding oversell.</p>
+<h2>10. Check the design</h2>
+<p>N1/N2 map to dive 1; N3 maps to dive 2. Crash after payment capture but before local finalization: stock must remain reserved until reconciliation, concurrent buyers must not obtain those units, and recovery must produce one completed order.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

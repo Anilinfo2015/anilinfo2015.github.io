@@ -1,0 +1,46 @@
+---
+title: "Video streaming: an interview design"
+description: "Resumable uploads, adaptive playback, and bounded private-video access."
+---
+<h1>Video streaming</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> upload a video; play it at an appropriate bitrate; let owners choose public or private visibility.</p>
+<ol>
+  <li><strong>NFR1:</strong> assume 100,000 concurrent viewers, with p95 playback startup below two seconds on supported broadband connections.</li>
+  <li><strong>NFR2:</strong> target 99.95% monthly playback availability for ready videos.</li>
+  <li><strong>NFR3:</strong> preserve acknowledged finalized uploads through one zone failure.</li>
+  <li><strong>NFR4:</strong> authorize private playback and deny new segment requests within 60 seconds of viewer revocation.</li>
+</ol>
+<h2>2. Out of scope</h2>
+<p>Live broadcasts, recommendations, advertising, DRM, and copyright detection are excluded. Revocation cannot erase bytes a viewer already downloaded. Private videos use an explicit owner-managed viewer list.</p>
+<h2>3. Core entities</h2>
+<p><code>Video(videoId, ownerId, visibility, aclVersion, state)</code> references an immutable original. <code>Upload(uploadId)</code> tracks expected size and checksum. <code>Rendition(videoId, generation, bitrate)</code> references a segment manifest. READY means every referenced segment exists and has passed validation; incomplete generations are never published.</p>
+<h2>4. API</h2>
+<p><code>POST /uploads {bytes, checksum}</code> returns 201 with uploadId and constrained multipart URLs. <code>POST /uploads/{id}/complete {parts}</code> validates ownership, size, and checksums, returning 202 with videoId or 422 for mismatch. Both require Idempotency-Key; matching retries reuse results, changed input returns 409. <code>GET /videos/{id}</code> returns processing state. <code>GET /videos/{id}/playback</code> checks visibility/viewer membership and returns a signed manifest or 409 when not ready. <code>PUT /videos/{id}/access {visibility, viewers, expectedVersion}</code> is owner-only and returns the new version; stale updates return 409. Unauthorized reads return 404.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    Client --> API
+    API --> Metadata
+    Client --> ObjectStore
+    Metadata --> Worker
+    Worker --> ObjectStore
+    Player --> Delivery
+    Delivery --> ObjectStore
+</pre>
+<ol>
+  <li>Reserve an upload, send parts directly to storage, and finalize verified bytes.</li>
+  <li>A worker produces multiple bitrates and atomically publishes a ready manifest.</li>
+  <li>Authorize playback, fetch segments through delivery servers, and adapt bitrate to measured bandwidth. Owners update access through the API.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Pre-encoding costs storage and delays readiness but avoids transcoding during playback. Just-in-time encoding saves rarely watched renditions while risking startup latency. Choose a small pre-encoded bitrate ladder first. The dominant bottleneck is delivery bandwidth, not metadata queries.</p>
+<h2>7. Scale estimate</h2>
+<p>At an average 4 Mb/second per viewer, 100,000 viewers require 400 Gb/second, or 50 GB/second, of peak delivery. A sustained hour transfers 180 TB. With a measured 95% edge byte-hit rate, origins still need 2.5 GB/second. These are payload estimates, excluding protocol overhead; use regional edge delivery and provision origin headroom for cold releases.</p>
+<h2>8. Deep dive 1: Playback capacity and availability</h2>
+<p>Cache immutable segments by videoId, generation, and rendition. Use short segments and a small initial bitrate to reduce startup downloads. Request coalescing shields origins during popular releases; replicate objects across zones and retry another healthy origin with a bounded deadline. Manifests reference only complete generations, allowing edge nodes to cache segments indefinitely without stale-content ambiguity. Monitor startup latency, rebuffering, and origin saturation separately. A lower starting bitrate trades initial picture quality for speed; multi-region delivery adds storage and transfer costs rather than guaranteeing availability.</p>
+<h2>9. Deep dive 2: Durable publishing and access</h2>
+<p>Finalize only after the object store confirms cross-zone durability; commit upload state and a processing outbox record together. Workers retry by generation, verify all outputs, and compare-and-set READY. Sweep abandoned uploads and unpublished generations later. Playback authorization reads current ACL state and issues tokens expiring no later than 60 seconds after that check began. Delivery nodes validate tokens on manifests and every segment before cache lookup; private origin objects have no public fallback. ACL failures deny issuance. Replayed completion requests cannot create duplicate videos because request results share the metadata transaction.</p>
+<h2>10. Check the design</h2>
+<p>NFR1–2 → dive 1; NFR3–4 → dive 2. Kill a transcoder halfway through: playback stays unavailable until a complete generation publishes. Revoke a viewer while segments are cached: new segment requests fail after the token bound.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a> · <a href="../design-youtube/01-foundations.html">Related longer video-ranking foundation (not a playback design)</a></p>

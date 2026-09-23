@@ -1,0 +1,42 @@
+---
+title: "LLD Walkthrough: Hotel Booking"
+description: "Room-specific reservations with half-open stays, atomic booking, and exact nightly prices."
+---
+<h1>Hotel Booking</h1>
+
+<h2>1. Requirements</h2>
+<p>Search available rooms, reserve one concrete room, cancel before arrival, check in, and check out. Concurrent service instances share a transactional database. Stays use property-local calendar dates and half-open intervals [arrival,departure); departure must follow arrival. Limit stays to 30 nights. Prices are integer minor units in one property currency, snapshotted per night.</p>
+
+<h2>2. Out of scope</h2>
+<p>Exclude room-type overbooking, deposits, external payments, taxes, housekeeping schedules, and multi-room group reservations. This is pay-at-property reservation management: confirmation does not claim that money was collected. Automatic no-show cancellation and early-arrival handling are excluded. Local dates describe lodging nights, not elapsed 24-hour durations.</p>
+
+<h2>3. Model and invariants</h2>
+<p><code>ReservationService</code> owns lifecycle changes. <code>Room</code> owns identity, property, and capacity. <code>Reservation</code> owns guest, room, dates, nightly price snapshot, total, version, and status. <code>RateCalendar</code> supplies a rate for every occupied night.</p>
+<pre class="mermaid">
+classDiagram
+    class ReservationService
+    class Room
+    class Reservation
+    class RateCalendar
+    ReservationService --> Reservation
+    Reservation --> Room
+    ReservationService --> RateCalendar
+</pre>
+<p>Non-cancelled reservations for a room never overlap. States are <code>CONFIRMED → CHECKED_IN → CHECKED_OUT</code>, or <code>CONFIRMED → CANCELLED</code>. A checked-out reservation retains its historical interval. Early checkout does not automatically free booked nights.</p>
+
+<h2>4. Public contract</h2>
+<p><code>search(propertyId, arrival, departure, guestCount) → RoomPage</code> returns up to 100 advisory candidates or <code>InvalidStay</code>/<code>NotFound</code>. <code>reserve(guestId, roomId, arrival, departure, guestCount, key) → Reservation</code> returns <code>Unavailable</code>, <code>CapacityExceeded</code>, <code>MissingRate</code>, <code>InvalidStay</code>, <code>NotFound</code>, or <code>KeyConflict</code>. Identical guest/key payloads return the original result. <code>cancel(id, guestId, expectedVersion)</code>, <code>checkIn(id, expectedVersion)</code>, and <code>checkOut(id, expectedVersion)</code> return updated records or <code>NotFound</code>, <code>Forbidden</code>, <code>StaleVersion</code>, or <code>InvalidTransition</code>. Desk operations require a property-authorized caller.</p>
+
+<h2>5. Core flow</h2>
+<p>Reserve validates dates and occupancy, then locks the room row. Recheck overlaps with <code>existing.arrival &lt; departure &amp;&amp; arrival &lt; existing.departure</code>, excluding cancelled records. Read all nightly rates from one consistent snapshot; missing nights reject the request. Sum with checked integer arithmetic, then insert the reservation and idempotency result atomically.</p>
+<p>Other mutations lock room then reservation and recheck version. Cancellation requires confirmed status and current property date before arrival. Check-in requires confirmed status and current date within the stay. Also reject check-in while another reservation for that room remains checked in. Checkout requires checked-in status, changes state, and increments version without altering the booked interval.</p>
+
+<h2>6. Trade-offs and extensions</h2>
+<p>Assigning a concrete room simplifies exclusivity but reduces later allocation flexibility. A room-type inventory extension needs per-night capacity counters and atomic updates across every requested night, not merely a total room count.</p>
+
+<h2>7. Concurrency and failure handling</h2>
+<p>Every reservation writer locks the room, so empty-range inserts cannot race. Unique guest/key records resolve retries. Committed reservations survive crashes. An overstaying guest blocks the next physical check-in, even though date reservations remain non-overlapping; staff must resolve that operational exception rather than silently checking in two guests.</p>
+
+<h2>8. Test cases</h2>
+<p>[October 10,October 12) and [October 12,October 14) coexist. Two requests for the same room and overlapping dates yield one success. Rates 10000 and 12500 produce 22500 minor units. Equal arrival and departure fail. Cancellation on arrival date fails. Duplicate keys create one reservation. A 31-night request is rejected before nightly-rate retrieval, and an unclosed prior stay blocks the next check-in.</p>
+<p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

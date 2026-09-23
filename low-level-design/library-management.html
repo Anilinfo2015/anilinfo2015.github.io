@@ -1,0 +1,44 @@
+---
+title: "LLD Walkthrough: Library Management"
+description: "Copy-level lending, loan limits, precise due times, and retry-safe returns."
+---
+<h1>Library Management</h1>
+
+<h2>1. Requirements</h2>
+<p>Catalog titles and physical copies, lend an available copy to a member, return it, and list current loans. Concurrent desk terminals use one service backed by transactional storage. A member may have at most five active loans. Loans last fourteen elapsed days, measured using UTC instants rather than local calendar dates. Listing uses pages of at most 100 records.</p>
+
+<h2>2. Out of scope</h2>
+<p>Exclude reservations, renewals, inter-library transfer, fines, payments, and notification delivery. An overdue copy remains checked out until returned. Lost-copy processing is a separate extension; the baseline never makes a copy available merely because its due time passed.</p>
+
+<h2>3. Model and invariants</h2>
+<p><code>LibraryService</code> owns lending transitions. <code>Title</code> holds bibliographic metadata; <code>Copy</code> identifies one barcode and its title. <code>Loan</code> owns member, copy, checkout time, due time, and optional return time. A member record owns its active-loan count.</p>
+<pre class="mermaid">
+classDiagram
+    class LibraryService
+    class Title
+    class Copy
+    class Loan
+    class Member
+    LibraryService --> Loan
+    Title o-- Copy
+    Loan --> Copy
+    Loan --> Member
+</pre>
+<p>A copy has at most one active loan. The member count equals its unreturned loans and stays between zero and five. Returned loan records are immutable history. The on-time interval is [checkoutAt,dueAt); a still-active loan is overdue at dueAt.</p>
+
+<h2>4. Public contract</h2>
+<p><code>checkout(memberId, copyId, requestKey) → Loan</code> returns <code>NotFound</code>, <code>MemberInactive</code>, <code>LoanLimit</code>, <code>CopyUnavailable</code>, or <code>KeyConflict</code>. An identical member/key and payload returns the original loan, including after return. <code>returnCopy(loanId) → Loan</code> returns the existing returned record on duplicate calls or <code>NotFound</code>. Returning by loan ID prevents an old retry from closing a later borrower's loan. <code>listLoans(memberId, cursor, limit) → Page</code> validates the member and page size; cursors order by checkout time and ID.</p>
+
+<h2>5. Core flow</h2>
+<p>Checkout begins a transaction and checks the idempotency record. Lock the member, then the copy. Recheck membership, count, and active-copy ownership. Read database time, insert a loan with dueAt fourteen days later, set the copy's active-loan pointer, increment the member count, and persist the request result together. A unique active-loan constraint on copy ID catches any writer bypassing the service.</p>
+<p>For return, read the loan's immutable member and copy IDs, lock member then copy then loan, and recheck return status. If already returned, return the stored result. Otherwise set returnedAt, clear the matching copy pointer, and decrement the count in the same transaction. Never decrement based solely on a client-supplied barcode.</p>
+
+<h2>6. Trade-offs and extensions</h2>
+<p>A stored count makes loan-limit checks constant time but requires every lending mutation to maintain it. A reservation extension can add a per-title waiting list; allocating a returned copy must then occur inside the return transaction or a separate atomic claim.</p>
+
+<h2>7. Concurrency and failure handling</h2>
+<p>Member-first locking protects the limit even when two terminals request different copies. Copy locking protects duplicate lending. A unique member/key record resolves concurrent retries. Transactions and request results survive process failure; a committed checkout with a lost response is safely retrievable using the same key. No external calls occur while locks are held.</p>
+
+<h2>8. Test cases</h2>
+<p>With four active loans, two concurrent checkouts allow only one additional loan. Two members requesting the same copy produce one success. Returning twice decrements the count once. Replaying an old return after a new checkout leaves the new loan active. A checkout at 2026-09-01T12:00Z is due at 2026-09-15T12:00Z and overdue exactly then. Reject a page size of 101 before querying.</p>
+<p><a href="../interview-guide.html">Question catalog</a> · <a href="interview-template.html">Article template</a></p>

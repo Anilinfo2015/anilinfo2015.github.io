@@ -1,0 +1,43 @@
+---
+title: "Collaborative editor: an interview design"
+description: "Convergent text operations, durable acknowledgements, and reconnect boundaries."
+---
+<h1>Collaborative editor</h1>
+<h2>1. Requirements</h2>
+<p><strong>Functional:</strong> create and share a text document; edit it concurrently; reconnect and synchronize offline edits.</p>
+<ol>
+  <li><strong>NFR1:</strong> assume 10,000 active documents, at most 100 simultaneous editors/document, and same-region remote-edit p95 below 150 ms.</li>
+  <li><strong>NFR2:</strong> replicas receiving the same accepted operations must converge; acknowledged operations survive one zone failure.</li>
+  <li><strong>NFR3:</strong> support automatic synchronization for clients offline up to 24 hours without silently discarding local edits.</li>
+  <li><strong>NFR4:</strong> accept operations only from current editors and stop removed members receiving new remote content within five seconds.</li>
+</ol>
+<h2>2. Out of scope</h2>
+<p>Rich text, spreadsheets, and cross-document transactions are excluded. Limit visible text to 1 MB. Clients offline beyond 24 hours retain local copies but may need reconciliation.</p>
+<h2>3. Core entities</h2>
+<p><code>Document(docId, ownerId, epoch)</code> owns grants and snapshots. RGA text atoms have immutable <code>(LamportCounter, actorId)</code> identifiers; insertions reference predecessors and deletions tombstone identifiers. <code>Operation(docId, actorId, counter)</code> is unique. Snapshots retain causal metadata/tombstones. Accepted operations never reuse identities with different content.</p>
+<h2>4. API</h2>
+<p><code>POST /documents {title}</code> uses Idempotency-Key and returns docId; changed retry input returns 409. <code>PUT /documents/{id}/members/{userId} {role}</code> is owner-only and idempotent. <code>GET /documents/{id}/snapshot</code> requires read permission and returns epoch/state/cursor. An authenticated WebSocket accepts <code>sync {epoch, cursor}</code> and <code>apply {actorId, counter, dependencies, operations}</code>; durable acknowledgement returns the operation identity and log cursor. Actor identities are bound to the principal. Duplicate operations return their recorded acknowledgement; changed payloads return 409, invalid operations 422, obsolete epochs 410, revoked access 403. Backlog retrieval uses bounded cursor pages.</p>
+<h2>5. Basic design</h2>
+<pre class="mermaid">
+flowchart LR
+    EditorA --> DocumentServer
+    EditorB --> DocumentServer
+    DocumentServer --> OperationLog
+    DocumentServer --> Snapshots
+</pre>
+<ol>
+  <li>Create a document and grants, then load its snapshot.</li>
+  <li>Apply local edits optimistically; validate and append operations server-side before acknowledgement and broadcast.</li>
+  <li>Reconnect, fetch missing operations, and resend unacknowledged local operations using stable identities.</li>
+</ol>
+<h2>6. Trade-offs and bottlenecks</h2>
+<p>Operational transformation uses smaller operations but ties offline rebasing to server history. Choose RGA: traverse predecessor subtrees with siblings ordered by descending (LamportCounter, actorId); tombstones retain insertion anchors. Buffer missing dependencies; advance counters beyond observed timestamps. Stable identities handle duplicates, but tombstones enlarge snapshots.</p>
+<h2>7. Scale estimate</h2>
+<p>Assume ten active editors/document each producing two batched operations/second: 200,000 operations/second overall. At 200 bytes/operation, raw log ingress is 40 MB/second, or 3.456 TB/day if sustained. Three copies consume 10.368 TB/day before indexes. Average per-document delivery is 20 operations/second to ten clients; fan-out capacity matters separately. Batch keystrokes and compact snapshots rather than retaining an unbounded replay log.</p>
+<h2>8. Deep dive 1: Document-local ordering and convergence</h2>
+<p>Hash docId to a fenced owner and a cross-zone replicated log. Serialize admission per document, validate dependencies, and acknowledge only quorum-committed operations; clients buffer dependency gaps. Broadcast after commit. Receivers merge CRDT operations deterministically and deduplicate by identity; a log cursor simplifies replay but does not replace CRDT identifiers. A hot document cannot be split arbitrarily without coordinating edits, so cap participants and queue depth. Batch nearby operations for a few milliseconds, then measure end-to-end latency. On failover, reload snapshot plus committed tail; optimistic edits without acknowledgements remain visibly pending.</p>
+<h2>9. Deep dive 2: Offline retention and membership</h2>
+<p>Retain operation identities, causal metadata, and deletion tombstones for at least the 24-hour offline window, with recovery margin. Compact only past registered clients' safe frontiers; retire expired clients through an epoch transition. An obsolete client receives a new snapshot and keeps its unsynchronized branch for explicit reconciliation, never a misleading success. Check current editor grants at durable admission, so previously authorized offline edits can be rejected after removal. Streaming readers use five-second authorization leases and stop on expiry without renewal. Keep snapshots private and encrypt storage. More retention improves offline recovery but directly increases storage and merge costs.</p>
+<h2>10. Check the design</h2>
+<p>NFR1–2 → dive 1; NFR3–4 → dive 2. Disconnect two editors, edit concurrently, reconnect, and kill the owner after commit: replicas converge, acknowledged edits persist, and a removed editor's replay is rejected.</p>
+<p><a href="../../interview-guide.html">Question catalog</a> · <a href="../interview-template.html">HLD template</a></p>

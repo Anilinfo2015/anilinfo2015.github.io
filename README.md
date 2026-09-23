@@ -69,6 +69,14 @@ Whether you're preparing for FAANG interviews, architecting your next startup, o
 
 ## 📚 Content Library
 
+### HLD and LLD interview questions
+
+Start with the [question catalog](interview-guide.html), which groups 24 HLD
+and 26 LLD articles by the problem they cover. The [HLD template](system-design/interview-template.html)
+uses a working baseline followed by two deep dives. The [LLD template](low-level-design/interview-template.html)
+focuses on state ownership, method contracts, concurrency, and concrete tests.
+The catalog records the coverage gaps and links to the existing longer HLD series.
+
 ### 🏛️ Architecture Patterns
 
 | Topic | Description | Link |
