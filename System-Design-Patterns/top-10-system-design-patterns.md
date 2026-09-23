@@ -182,7 +182,7 @@ While the top 10 cover general web apps, these 3 additional questions test speci
 
 ### 12. Heavy Write & Real-Time Analytics
 **Questions:** Design a Metrics System (Datadog/Prometheus) / Ad-Click Aggregator
-- **Core Lesson:** **Write-Heavy Ingestion**. Handling millions of writes per second where of raw events.
+- **Core Lesson:** **Write-Heavy Ingestion**. Handling millions of writes per second of raw events.
 - **Key Concepts:** Time-Series Databases (TSDB), Stream Processing (Kafka + Flink/Spark Streaming), Data Rollups (Pre-aggregating 1s -> 1m -> 1h buckets), Batch Layer vs Speed Layer (Lambda Architecture).
 
 ### 13. Ultra-Low Latency & State Sync

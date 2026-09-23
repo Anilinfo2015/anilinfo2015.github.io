@@ -63,7 +63,7 @@ We simply convert a unique **Database Auto-Increment ID** into Base62.
 | 1 | `1` |
 | 100 | `1C` |
 | 1,000,000 | `4c92` |
-| 999,999,999,999 | `1tclXv` |
+| 999,999,999,999 | `hBxM5A3` |
 
 ### The Algorithm
 ```python

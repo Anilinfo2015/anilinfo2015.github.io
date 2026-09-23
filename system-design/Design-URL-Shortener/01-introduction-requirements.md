@@ -84,8 +84,8 @@ Create Link Latency:
 
 ```
 SLA: 99.9% uptime
-  = 4.3 hours downtime per month
-  = 43 seconds downtime per day
+  = 43 minutes downtime per month
+  = 86 seconds downtime per day
 
 Means:
   ├─ System continues during failures

@@ -189,7 +189,7 @@ By now the interviewer will start pushing: "What if two cars race for the last s
 
 The skill here is **bounded responses**. Give a crisp answer, tie it back to the model, and hand control back. Watch the interviewer — if they nod and change topic, stop talking.
 
-<a id="stage-6--wrap-up-4245-min"></a>
+<a id="final-check"></a>
 
 ### Final check
 

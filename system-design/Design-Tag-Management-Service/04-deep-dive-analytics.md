@@ -107,7 +107,7 @@ graph TD
 ```
 
 ### Fault Tolerance via Replication
-To recover from node failures (which would otherwise lose the in-memory counts), we deploy each shard as a **Replica Set** (Primary + 2 Updates).
+To recover from node failures (which would otherwise lose the in-memory counts), we deploy each shard as a **Replica Set** (Primary + 2 Replicas).
 *   **Write Path**: The Load Balancer sends the `TagAdded` event to the **Primary** and asynchronously to **Replicas**.
 *   **Failover**: If a Primary node crashes, a Replica is promoted, preventing count resets.
 *   **Straggler Mitigation**: The "Scatter-Gather" service can query *any* replica in the set, picking the fastest response to reduce tail latency.

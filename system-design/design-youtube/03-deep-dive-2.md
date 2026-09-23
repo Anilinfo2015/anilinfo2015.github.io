@@ -84,7 +84,7 @@ Cost = $0.35 × (10/60) = $0.058 per hour of video
 ### VP9 (Royalty-Free AV1 Precursor)
 
 **Characteristics:**
-- **Encoding speed**: 20-30x real-time (1 hour = 30-50 minutes on T4)
+- **Encoding speed**: 1.2-2x real-time (1 hour = 30-50 minutes on T4)
 - **Compression ratio**: 30-40% better than H.264
   - H.264 1080p: 5000 kbps
   - VP9 1080p: 3000 kbps (40% reduction)

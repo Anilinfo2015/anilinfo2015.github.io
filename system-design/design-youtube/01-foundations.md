@@ -59,7 +59,7 @@ In this series, we'll design a system to find the top K (usually 100) videos vie
 |---|---|
 | **Latency (P95)** | < 50ms for trending API |
 | **Latency (P99)** | < 100ms |
-| **Availability** | 99.99% (52 minutes/month max downtime) |
+| **Availability** | 99.99% (52 minutes/year max downtime) |
 | **Consistency** | Eventually consistent (5-10 second lag acceptable) |
 | **Scalability** | 120K+ QPS for trending queries, 25K+ QPS for metric writes |
 | **Data Retention** | 90 days for detailed metrics, 1 year for snapshots |
